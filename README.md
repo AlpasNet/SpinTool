@@ -68,6 +68,6 @@ The following libraries are required to build and run Spintool:
 - SDL 3 (https://github.com/libsdl-org/SDL)
 - SDL_Image (https://github.com/libsdl-org/SDL_image)
 
-On linux : mkdir build && cmake .. && make -j8
+On linux : mkdir build && cd build && cmake .. && make -j8
 
 See worklows actions about the commands used to compile a Linux native app and a Windows native app with a Linux Environment System

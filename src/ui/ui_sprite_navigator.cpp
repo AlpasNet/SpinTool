@@ -6,7 +6,6 @@
 #include "rom/title_screen_decoder.h"
 #include "ui/ui_editor.h"
 #include "ui/ui_file_selector.h"
-#include "ui/ui_image_io.h"
 
 #include "imgui.h"
 #include "SDL3/SDL_image.h"
@@ -34,6 +33,19 @@
 
 namespace
 {
+	std::string PathToUtf8(const std::filesystem::path& path)
+	{
+#if defined(__cpp_lib_char8_t)
+		const std::u8string utf8_path = path.generic_u8string();
+		return std::string(
+			reinterpret_cast<const char*>(utf8_path.data()),
+			utf8_path.size()
+		);
+#else
+		return path.generic_u8string();
+#endif
+	}
+
 	std::vector<Uint8> CopyIndexedSurfacePixels(SDL_Surface* surface)
 	{
 		std::vector<Uint8> pixels;
@@ -583,15 +595,10 @@ namespace spintool
 		}
 
 		const std::string path_utf8 = PathToUtf8(path);
-		std::string load_error;
-		SDLSurfaceHandle loaded_image = LoadImageFromPath(path, &load_error);
+		SDLSurfaceHandle loaded_image{ IMG_Load(path_utf8.c_str()) };
 		if (!loaded_image)
 		{
 			m_bonus_stage_status = "Could not load PNG: " + path_utf8;
-			if (!load_error.empty())
-			{
-				m_bonus_stage_status += " (" + load_error + ")";
-			}
 			return;
 		}
 
@@ -816,15 +823,10 @@ namespace spintool
 		}
 
 		const std::string path_utf8 = PathToUtf8(path);
-		std::string load_error;
-		SDLSurfaceHandle loaded_image = LoadImageFromPath(path, &load_error);
+		SDLSurfaceHandle loaded_image{ IMG_Load(path_utf8.c_str()) };
 		if (!loaded_image)
 		{
 			m_tails_plane_status = "Could not load PNG: " + path_utf8;
-			if (!load_error.empty())
-			{
-				m_tails_plane_status += " (" + load_error + ")";
-			}
 			return;
 		}
 
@@ -1108,15 +1110,10 @@ namespace spintool
 		}
 
 		const std::string path_utf8 = PathToUtf8(path);
-		std::string load_error;
-		SDLSurfaceHandle loaded_image = LoadImageFromPath(path, &load_error);
+		SDLSurfaceHandle loaded_image{ IMG_Load(path_utf8.c_str()) };
 		if (!loaded_image)
 		{
 			m_title_screen_status = "Could not load PNG: " + path_utf8;
-			if (!load_error.empty())
-			{
-				m_title_screen_status += " (" + load_error + ")";
-			}
 			return;
 		}
 
@@ -1339,15 +1336,10 @@ namespace spintool
 		}
 
 		const std::string path_utf8 = PathToUtf8(path);
-		std::string load_error;
-		SDLSurfaceHandle loaded_image = LoadImageFromPath(path, &load_error);
+		SDLSurfaceHandle loaded_image{ IMG_Load(path_utf8.c_str()) };
 		if (!loaded_image)
 		{
 			m_main_sprite_status = "Could not load PNG: " + path_utf8;
-			if (!load_error.empty())
-			{
-				m_main_sprite_status += " (" + load_error + ")";
-			}
 			return;
 		}
 

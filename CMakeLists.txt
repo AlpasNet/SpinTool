@@ -61,7 +61,6 @@ add_executable(spintool
         src/ui/ui_editor.cpp
         src/ui/ui_editor_window.cpp
         src/ui/ui_file_selector.cpp
-        src/ui/ui_image_io.cpp
         src/ui/ui_palette.cpp
         src/ui/ui_palette_viewer.cpp
         src/ui/ui_sprite.cpp

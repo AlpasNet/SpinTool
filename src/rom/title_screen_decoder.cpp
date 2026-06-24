@@ -50,9 +50,8 @@ namespace spintool::rom
 		// This object table is another Sonic animation composition, not the
 		// large pinball support visible underneath him.
 		constexpr Uint32 kTitleAdditionalSonicObjectTable = 0x000998A4U;
-		// The background and support/bumper are stored as title-screen tile
-		// layouts and use the same shared title-screen graphics block.
-		constexpr Uint32 kTitleBackgroundTileLayout = 0x0009C82EU;
+		// The support/bumper itself is stored as the title-screen foreground
+		// tile layout and uses the same shared title-screen graphics block.
 		constexpr Uint32 kTitleBumperRingTileLayout = 0x0009C05AU;
 		constexpr Uint32 kTitlePaletteDataOffset = 0x0009BD3AU;
 		constexpr Uint32 kBlankDescriptor = 0x00099430U;
@@ -311,7 +310,6 @@ namespace spintool::rom
 			std::string name,
 			std::string usage,
 			const std::size_t frame_id,
-			const bool skip_empty_tiles,
 			std::vector<FrameDefinition>& output,
 			std::string& error
 		)
@@ -327,7 +325,7 @@ namespace spintool::rom
 			if (width_in_tiles == 0U || height_in_tiles == 0U ||
 				width_in_tiles > 128U || height_in_tiles > 128U)
 			{
-				error = "Title-screen tile layout has invalid dimensions";
+				error = "Title-screen bumper layout has invalid dimensions";
 				return false;
 			}
 
@@ -336,7 +334,7 @@ namespace spintool::rom
 			const Uint32 cells_offset = layout_offset + 4U;
 			if (!CanRead(rom, cells_offset, cell_count * sizeof(Uint16)))
 			{
-				error = "Title-screen tile layout data is outside the ROM";
+				error = "Title-screen bumper layout data is outside the ROM";
 				return false;
 			}
 
@@ -357,10 +355,10 @@ namespace spintool::rom
 						static_cast<Uint32>(cell_index * sizeof(Uint16));
 					const Uint16 attributes = ReadBE16(rom, cell_offset);
 
-					// The foreground support is cropped by skipping empty cells. The
-					// full background keeps them so its exported/imported image remains
-					// exactly the dimensions of the title-screen plane.
-					if (skip_empty_tiles && (attributes & kTileIndexMask) == 0U)
+					// Tile zero is the transparent/empty cell in this foreground
+					// layout. Skipping it also crops the assembled frame to the
+					// actual support instead of the full 320x224 plane.
+					if ((attributes & kTileIndexMask) == 0U)
 					{
 						continue;
 					}
@@ -384,7 +382,7 @@ namespace spintool::rom
 
 			if (definition.pieces.empty())
 			{
-				error = "Title-screen tile layout contains no editable tiles";
+				error = "Title-screen bumper layout contains no visible tiles";
 				return false;
 			}
 			output.emplace_back(std::move(definition));
@@ -429,26 +427,11 @@ namespace spintool::rom
 			}
 			if (!AppendTileLayoutFrame(
 				rom,
-				kTitleBackgroundTileLayout,
-				TitleScreenCategory::BUMPER_RING,
-				"Background",
-				"Complete title-screen background plane",
-				100U,
-				false,
-				output,
-				error
-			))
-			{
-				return false;
-			}
-			if (!AppendTileLayoutFrame(
-				rom,
 				kTitleBumperRingTileLayout,
 				TitleScreenCategory::BUMPER_RING,
 				"Bumper / Ring",
 				"Pinball support on which Sonic bounces",
-				101U,
-				true,
+				100U,
 				output,
 				error
 			))

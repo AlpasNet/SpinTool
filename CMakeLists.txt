@@ -61,6 +61,7 @@ add_executable(spintool
         src/ui/ui_editor.cpp
         src/ui/ui_editor_window.cpp
         src/ui/ui_file_selector.cpp
+        src/ui/ui_image_io.cpp
         src/ui/ui_palette.cpp
         src/ui/ui_palette_viewer.cpp
         src/ui/ui_sprite.cpp
@@ -99,6 +100,7 @@ target_link_libraries(spintool PRIVATE
 )
 
 if(WIN32)
+    target_link_libraries(spintool PRIVATE comdlg32)
     target_compile_definitions(spintool PRIVATE
         WIN32_LEAN_AND_MEAN
         NOMINMAX

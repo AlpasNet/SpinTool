@@ -4,6 +4,7 @@
 #include "ui/ui_editor.h"
 #include "ui/ui_palette_viewer.h"
 #include "ui/ui_file_selector.h"
+#include "ui/ui_image_io.h"
 #include "rom/sprite.h"
 
 #include "SDL3/SDL_image.h"
@@ -19,19 +20,6 @@ namespace
 {
 	constexpr float img_scale = 2.0f;
 
-	std::string PathToUtf8(const std::filesystem::path& path)
-	{
-#if defined(__cpp_lib_char8_t)
-		const std::u8string utf8_path = path.generic_u8string();
-
-		return std::string(
-			reinterpret_cast<const char*>(utf8_path.data()),
-			utf8_path.size()
-		);
-#else
-		return path.generic_u8string();
-#endif
-	}
 }
 
 namespace spintool
@@ -47,13 +35,23 @@ namespace spintool
 		settings.file_extension_filter = { ".png", ".gif", ".bmp" };
 		settings.tiled_previews = true;
 		settings.num_columns = 4;
+		settings.use_native_dialog = true;
 
 		std::optional<std::filesystem::path> selected_path = DrawFileSelector(settings, m_owning_ui, path_buffer);
 
 		const bool path_changed = ImGui::InputText("Path", path_buffer, sizeof(path_buffer), ImGuiInputTextFlags_EnterReturnsTrue);
+		if (path_changed && path_buffer[0] != '\0')
+		{
+			selected_path = std::filesystem::path{path_buffer};
+		}
 		ImGui::SameLine();
 		settings.open_popup = ImGui::Button("Choose Image");
 		settings.close_popup = false;
+
+		if (!m_load_error.empty())
+		{
+			ImGui::TextWrapped("Image load error: %s", m_load_error.c_str());
+		}
 
 		if (m_available_palettes.empty())
 		{
@@ -65,13 +63,19 @@ namespace spintool
 			settings.close_popup = true;
 
 			const std::string selected_path_utf8 = PathToUtf8(*selected_path);
-			SDLSurfaceHandle loaded_surface{ IMG_Load(selected_path_utf8.c_str()) };
+			std::string load_error;
+			SDLSurfaceHandle loaded_surface = LoadImageFromPath(*selected_path, &load_error);
 			if (loaded_surface != nullptr)
 			{
 				m_loaded_path = selected_path_utf8;
+				m_load_error.clear();
 				m_imported_image = SDLSurfaceHandle{ SDL_ConvertSurface(loaded_surface.get(), SDL_PIXELFORMAT_RGBA32) };
 				m_rendered_imported_image = Renderer::RenderToTexture(m_imported_image.get());
 				m_detected_colours.clear();
+			}
+			else
+			{
+				m_load_error = load_error;
 			}
 		}
 

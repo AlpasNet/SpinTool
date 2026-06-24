@@ -64,6 +64,7 @@ namespace spintool
 		rom::Palette m_selected_palette;
 		SDLPaletteHandle m_preview_palette;
 		std::string m_loaded_path;
+		std::string m_load_error;
 
 		int m_selected_palette_index = 0;
 		int m_num_tiles_to_insert = 0;

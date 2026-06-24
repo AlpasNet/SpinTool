@@ -6,6 +6,7 @@
 #include "rom/title_screen_decoder.h"
 #include "ui/ui_editor.h"
 #include "ui/ui_file_selector.h"
+#include "ui/ui_image_io.h"
 
 #include "imgui.h"
 #include "SDL3/SDL_image.h"
@@ -33,19 +34,6 @@
 
 namespace
 {
-	std::string PathToUtf8(const std::filesystem::path& path)
-	{
-#if defined(__cpp_lib_char8_t)
-		const std::u8string utf8_path = path.generic_u8string();
-		return std::string(
-			reinterpret_cast<const char*>(utf8_path.data()),
-			utf8_path.size()
-		);
-#else
-		return path.generic_u8string();
-#endif
-	}
-
 	std::vector<Uint8> CopyIndexedSurfacePixels(SDL_Surface* surface)
 	{
 		std::vector<Uint8> pixels;
@@ -595,10 +583,15 @@ namespace spintool
 		}
 
 		const std::string path_utf8 = PathToUtf8(path);
-		SDLSurfaceHandle loaded_image{ IMG_Load(path_utf8.c_str()) };
+		std::string load_error;
+		SDLSurfaceHandle loaded_image = LoadImageFromPath(path, &load_error);
 		if (!loaded_image)
 		{
 			m_bonus_stage_status = "Could not load PNG: " + path_utf8;
+			if (!load_error.empty())
+			{
+				m_bonus_stage_status += " (" + load_error + ")";
+			}
 			return;
 		}
 
@@ -823,10 +816,15 @@ namespace spintool
 		}
 
 		const std::string path_utf8 = PathToUtf8(path);
-		SDLSurfaceHandle loaded_image{ IMG_Load(path_utf8.c_str()) };
+		std::string load_error;
+		SDLSurfaceHandle loaded_image = LoadImageFromPath(path, &load_error);
 		if (!loaded_image)
 		{
 			m_tails_plane_status = "Could not load PNG: " + path_utf8;
+			if (!load_error.empty())
+			{
+				m_tails_plane_status += " (" + load_error + ")";
+			}
 			return;
 		}
 
@@ -1110,10 +1108,15 @@ namespace spintool
 		}
 
 		const std::string path_utf8 = PathToUtf8(path);
-		SDLSurfaceHandle loaded_image{ IMG_Load(path_utf8.c_str()) };
+		std::string load_error;
+		SDLSurfaceHandle loaded_image = LoadImageFromPath(path, &load_error);
 		if (!loaded_image)
 		{
 			m_title_screen_status = "Could not load PNG: " + path_utf8;
+			if (!load_error.empty())
+			{
+				m_title_screen_status += " (" + load_error + ")";
+			}
 			return;
 		}
 
@@ -1336,10 +1339,15 @@ namespace spintool
 		}
 
 		const std::string path_utf8 = PathToUtf8(path);
-		SDLSurfaceHandle loaded_image{ IMG_Load(path_utf8.c_str()) };
+		std::string load_error;
+		SDLSurfaceHandle loaded_image = LoadImageFromPath(path, &load_error);
 		if (!loaded_image)
 		{
 			m_main_sprite_status = "Could not load PNG: " + path_utf8;
+			if (!load_error.empty())
+			{
+				m_main_sprite_status += " (" + load_error + ")";
+			}
 			return;
 		}
 
@@ -1906,6 +1914,7 @@ namespace spintool
 			bonus_import_settings.file_extension_filter = { ".png" };
 			bonus_import_settings.tiled_previews = true;
 			bonus_import_settings.num_columns = 4;
+			bonus_import_settings.use_native_dialog = true;
 			bonus_import_settings.open_popup = std::exchange(
 				m_open_bonus_import_popup,
 				false
@@ -1935,6 +1944,7 @@ namespace spintool
 			tails_import_settings.file_extension_filter = { ".png" };
 			tails_import_settings.tiled_previews = true;
 			tails_import_settings.num_columns = 4;
+			tails_import_settings.use_native_dialog = true;
 			tails_import_settings.open_popup = std::exchange(
 				m_open_tails_import_popup,
 				false
@@ -1964,6 +1974,7 @@ namespace spintool
 			title_import_settings.file_extension_filter = { ".png" };
 			title_import_settings.tiled_previews = true;
 			title_import_settings.num_columns = 4;
+			title_import_settings.use_native_dialog = true;
 			title_import_settings.open_popup = std::exchange(
 				m_open_title_import_popup,
 				false
@@ -1992,6 +2003,7 @@ namespace spintool
 			main_import_settings.file_extension_filter = { ".png" };
 			main_import_settings.tiled_previews = true;
 			main_import_settings.num_columns = 4;
+			main_import_settings.use_native_dialog = true;
 			main_import_settings.open_popup = std::exchange(
 				m_open_main_import_popup,
 				false

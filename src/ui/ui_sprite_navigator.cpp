@@ -19,6 +19,7 @@
 #include <fstream>
 #include <iterator>
 #include <cstdio>
+#include <cstdint>
 #include <cassert>
 #include <optional>
 #include <algorithm>
@@ -116,23 +117,53 @@ namespace
 			return {};
 		}
 
-		SDLSurfaceHandle surface{
-			SDL_CreateSurface(width, height, SDL_PIXELFORMAT_INDEX8)
-		};
-		if (!surface)
+		for (const std::shared_ptr<spintool::rom::Palette>& line :
+			palette_set.palette_lines)
 		{
-			return {};
+			if (!line) return {};
 		}
-		SDLPaletteHandle sdl_palette =
-			spintool::Renderer::CreateSDLPaletteForSet(palette_set);
-		if (!sdl_palette ||
-			!SDL_SetSurfacePalette(surface.get(), sdl_palette.get()) ||
-			!SDL_SetSurfaceColorKey(surface.get(), true, 0))
+
+		// Do not use SDL palette blits here. Several title palette lines contain
+		// duplicate RGB colours. SDL is allowed to remap such colours to another
+		// matching palette index, which loses the original Mega Drive palette-line
+		// attribute. Keep the combined 0-63 indices produced by the decoder exactly.
+		std::vector<Uint8> pixels(
+			static_cast<std::size_t>(width) * height,
+			0U
+		);
+		for (auto piece_it = sprite.sprite_tiles.rbegin();
+			piece_it != sprite.sprite_tiles.rend(); ++piece_it)
 		{
-			return {};
+			const std::shared_ptr<spintool::rom::SpriteTile>& piece = *piece_it;
+			if (!piece) continue;
+			for (int displayed_y = 0; displayed_y < piece->y_size; ++displayed_y)
+			{
+				for (int displayed_x = 0; displayed_x < piece->x_size; ++displayed_x)
+				{
+					const int source_x = piece->blit_settings.flip_horizontal
+						? piece->x_size - 1 - displayed_x : displayed_x;
+					const int source_y = piece->blit_settings.flip_vertical
+						? piece->y_size - 1 - displayed_y : displayed_y;
+					const Uint8 colour = static_cast<Uint8>(piece->pixel_data[
+						static_cast<std::size_t>(source_y) * piece->x_size + source_x
+					] & 0x3FU);
+					if ((colour & 0x0FU) == 0U) continue;
+
+					const int destination_x =
+						piece->x_offset - bounds.min.x + displayed_x;
+					const int destination_y =
+						piece->y_offset - bounds.min.y + displayed_y;
+					if (destination_x < 0 || destination_x >= width ||
+						destination_y < 0 || destination_y >= height)
+					{
+						continue;
+					}
+					pixels[static_cast<std::size_t>(destination_y) * width +
+						destination_x] = colour;
+				}
+			}
 		}
-		sprite.RenderToSurface(surface.get());
-		return CopyIndexedSurfacePixels(surface.get());
+		return pixels;
 	}
 
 	std::vector<Uint8> ConvertSurfaceToIndexed(
@@ -463,6 +494,27 @@ namespace
 	}
 
 
+	std::shared_ptr<spintool::rom::PaletteSet> BuildTitleBackgroundImportPaletteSet(
+		const spintool::rom::PaletteSet& source
+	)
+	{
+		auto output = std::make_shared<spintool::rom::PaletteSet>();
+		for (std::size_t line = 0U; line < source.palette_lines.size(); ++line)
+		{
+			if (!source.palette_lines[line]) return {};
+			output->palette_lines[line] =
+				std::make_shared<spintool::rom::Palette>(*source.palette_lines[line]);
+		}
+
+		// The title background uses palette line 1. Its original slots 9 and 10
+		// duplicate slots 6 and 7, so they can be safely dedicated to the two
+		// missing greys required by the complete exported background image.
+		output->palette_lines[1U]->palette_swatches[9U].packed_value = 0x0CCCU;
+		output->palette_lines[1U]->palette_swatches[10U].packed_value = 0x0666U;
+		return output;
+	}
+
+
 	const char* TitleCategoryName(const spintool::rom::TitleScreenCategory category)
 	{
 		switch (category)
@@ -477,6 +529,8 @@ namespace
 			return "Logo The Hedgehog";
 		case spintool::rom::TitleScreenCategory::LOGO_SPINBALL:
 			return "Logo Spinball";
+		case spintool::rom::TitleScreenCategory::BACKGROUND:
+			return "Background";
 		}
 		return "Title Frame";
 	}
@@ -495,6 +549,8 @@ namespace
 			return "logo_the_hedgehog";
 		case spintool::rom::TitleScreenCategory::LOGO_SPINBALL:
 			return "logo_spinball";
+		case spintool::rom::TitleScreenCategory::BACKGROUND:
+			return "background";
 		}
 		return "title";
 	}
@@ -1136,10 +1192,34 @@ namespace spintool
 			preferred_width,
 			preferred_height
 		);
+		std::shared_ptr<rom::PaletteSet> background_import_palette_set;
+		const rom::PaletteSet* import_palette_set = m_title_screen_palette_set.get();
+		std::vector<Uint8> import_palette_line_map = target.palette_line_map;
+		if (target.category == rom::TitleScreenCategory::BACKGROUND)
+		{
+			background_import_palette_set = BuildTitleBackgroundImportPaletteSet(
+				*m_title_screen_palette_set
+			);
+			if (!background_import_palette_set)
+			{
+				m_title_screen_status =
+					"The dedicated title-background palette could not be prepared.";
+				return;
+			}
+			import_palette_set = background_import_palette_set.get();
+			// The real title background is entirely drawn with palette line 1.
+			// Keep that hardware attribute fixed instead of guessing a line from
+			// RGB colours. Guessing was especially unsafe for opaque black pixels
+			// and duplicate colours shared by several title palette lines.
+			import_palette_line_map.assign(
+				static_cast<std::size_t>(loaded_image->w) * loaded_image->h,
+				1U
+			);
+		}
 		const std::vector<Uint8> indexed_pixels = ConvertSurfaceToTitleIndexed(
 			loaded_image.get(),
-			*m_title_screen_palette_set,
-			target.palette_line_map,
+			*import_palette_set,
+			import_palette_line_map,
 			preferred_indices,
 			preferred_width,
 			preferred_height
@@ -1307,7 +1387,34 @@ namespace spintool
 		}
 		SDL_SetSurfacePalette(output_surface.get(), palette.get());
 		SDL_SetSurfaceColorKey(output_surface.get(), true, 0);
-		image.texture->sprite->RenderToSurface(output_surface.get());
+		int indexed_width = 0;
+		int indexed_height = 0;
+		const std::vector<Uint8> indexed_pixels = RenderSpriteIndexedPixels(
+			*image.texture->sprite,
+			*m_title_screen_palette_set,
+			indexed_width,
+			indexed_height
+		);
+		if (indexed_width != output_surface->w ||
+			indexed_height != output_surface->h ||
+			indexed_pixels.size() < static_cast<std::size_t>(indexed_width) * indexed_height)
+		{
+			m_title_screen_status =
+				"Could not preserve the exact title-screen palette indices for PNG export.";
+			return;
+		}
+		for (int y = 0; y < indexed_height; ++y)
+		{
+			Uint8* destination_row = static_cast<Uint8*>(output_surface->pixels) +
+				static_cast<std::size_t>(y) * output_surface->pitch;
+			std::copy_n(
+				indexed_pixels.begin() + static_cast<std::ptrdiff_t>(
+					static_cast<std::size_t>(y) * indexed_width
+				),
+				static_cast<std::size_t>(indexed_width),
+				destination_row
+			);
+		}
 		const std::string export_path_utf8 = PathToUtf8(export_path);
 		if (!IMG_SavePNG(output_surface.get(), export_path_utf8.c_str()))
 		{
@@ -1860,13 +1967,14 @@ namespace spintool
 				"Logo Sonic",
 				"Logo The Hedgehog",
 				"Logo Spinball",
+				"Background",
 			};
 			ImGui::SetNextItemWidth(220.0f);
 			if (ImGui::Combo(
 				"Category##title_screen_category",
 				&m_selected_title_category,
 				title_category_names,
-				5
+				6
 			))
 			{
 				m_result_display_mode = ResultDisplayMode::TITLE_SCREEN_FRAMES;

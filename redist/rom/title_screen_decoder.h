@@ -20,6 +20,7 @@ namespace spintool::rom
 		LOGO_SONIC = 2,
 		LOGO_THE_HEDGEHOG = 3,
 		LOGO_SPINBALL = 4,
+		BACKGROUND = 5,
 	};
 
 	struct TitleScreenFrame

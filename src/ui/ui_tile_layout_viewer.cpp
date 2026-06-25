@@ -45,6 +45,37 @@ namespace spintool
 			resolved_offset = rom.ReadUint32(table_offset);
 			return ROMRangeIsValid(rom, resolved_offset, minimum_size);
 		}
+
+		Uint32 ResolveMainMenuTileset(const rom::SpinballROM& rom)
+		{
+			constexpr Uint32 pointer_operand = 0x000F2E7AU;
+			if (ROMRangeIsValid(rom, pointer_operand, sizeof(Uint32)))
+			{
+				const Uint32 header = rom.ReadUint32(pointer_operand);
+				if (ROMRangeIsValid(rom, header, sizeof(Uint16)) &&
+					rom.ReadUint16(header) == 0xFFFFU)
+				{
+					return header + 2U;
+				}
+			}
+			return rom::MainMenuTileset;
+		}
+
+		Uint32 ResolveMainMenuBackgroundLayout(const rom::SpinballROM& rom)
+		{
+			constexpr Uint32 layout_pointer = 0x00099370U;
+			if (ROMRangeIsValid(rom, layout_pointer, sizeof(Uint32)))
+			{
+				const Uint32 layout = rom.ReadUint32(layout_pointer);
+				if (ROMRangeIsValid(rom, layout, 4U) &&
+					rom.ReadUint16(layout) == 40U &&
+					rom.ReadUint16(layout + 2U) == 28U)
+				{
+					return layout;
+				}
+			}
+			return rom::MainMenuTileLayoutBG;
+		}
 	}
 	EditorTileLayoutViewer::EditorTileLayoutViewer(EditorUI& owning_ui)
 		: EditorWindowBase(owning_ui)
@@ -3016,9 +3047,9 @@ namespace spintool
 				auto queue_frontend_layer = [&](bool background)
 				{
 					RenderTileLayoutRequest request;
-					request.tileset_address = rom::MainMenuTileset;
+					request.tileset_address = ResolveMainMenuTileset(m_owning_ui.GetROM());
 					request.tile_layout_address = background
-						? rom::MainMenuTileLayoutBG
+						? ResolveMainMenuBackgroundLayout(m_owning_ui.GetROM())
 						: rom::MainMenuTileLayoutGiantBumper;
 
 					request.tile_layout_width = m_owning_ui.GetROM().ReadUint16(request.tile_layout_address);

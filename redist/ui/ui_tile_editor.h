@@ -36,5 +36,6 @@ namespace spintool
 		Uint32 m_brush_index = 0;
 
 		bool m_tile_brush_changed = false;
+		bool m_show_tile_ids = true;
 	};
 }

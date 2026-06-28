@@ -1,4 +1,5 @@
 #include "ui/ui_tile_layout_viewer.h"
+#include "platform/web_platform.h"
 
 #include "ui/ui_editor.h"
 
@@ -7,7 +8,6 @@
 #include <cassert>
 #include <filesystem>
 #include "rom/ssc_compressor.h"
-#include "rom/menu_background_decoder.h"
 #include "editor/editor_brush.h"
 #include "nlohmann/json.hpp"
 #include <fstream>
@@ -47,36 +47,6 @@ namespace spintool
 			return ROMRangeIsValid(rom, resolved_offset, minimum_size);
 		}
 
-		Uint32 ResolveMainMenuTileset(const rom::SpinballROM& rom)
-		{
-			constexpr Uint32 pointer_operand = 0x000F2E7AU;
-			if (ROMRangeIsValid(rom, pointer_operand, sizeof(Uint32)))
-			{
-				const Uint32 header = rom.ReadUint32(pointer_operand);
-				if (ROMRangeIsValid(rom, header, sizeof(Uint16)) &&
-					rom.ReadUint16(header) == 0xFFFFU)
-				{
-					return header + 2U;
-				}
-			}
-			return rom::MainMenuTileset;
-		}
-
-		Uint32 ResolveMainMenuBackgroundLayout(const rom::SpinballROM& rom)
-		{
-			constexpr Uint32 layout_pointer = 0x00099370U;
-			if (ROMRangeIsValid(rom, layout_pointer, sizeof(Uint32)))
-			{
-				const Uint32 layout = rom.ReadUint32(layout_pointer);
-				if (ROMRangeIsValid(rom, layout, 4U) &&
-					rom.ReadUint16(layout) == 40U &&
-					rom.ReadUint16(layout + 2U) == 28U)
-				{
-					return layout;
-				}
-			}
-			return rom::MainMenuTileLayoutBG;
-		}
 	}
 	EditorTileLayoutViewer::EditorTileLayoutViewer(EditorUI& owning_ui)
 		: EditorWindowBase(owning_ui)
@@ -233,23 +203,6 @@ namespace spintool
 					ImGui::EndMenu();
 				}
 
-				if (ImGui::BeginMenu("Frontend"))
-				{
-					if (ImGui::Selectable("Background"))
-					{
-						out_render_request = RenderRequestType::MENU_BACKGROUND;
-					}
-					if (ImGui::Selectable("Foreground"))
-					{
-						out_render_request = RenderRequestType::MENU_FOREGROUND;
-					}
-					if (ImGui::Selectable("Combined"))
-					{
-						out_render_request = RenderRequestType::MENU;
-					}
-					ImGui::EndMenu();
-				}
-
 				if (ImGui::BeginMenu("Bonus"))
 				{
 					if (ImGui::Selectable("Background"))
@@ -276,10 +229,6 @@ namespace spintool
 						out_render_request = RenderRequestType::SEGA_LOGO;
 					}
 
-					if (ImGui::Selectable("Preview Options Menu"))
-					{
-						out_render_request = RenderRequestType::OPTIONS;
-					}
 					ImGui::EndMenu();
 				}
 
@@ -373,9 +322,19 @@ namespace spintool
 			m_working_layer_index.reset();
 		}
 
-		ImGui::SetNextWindowPos(ImVec2{ 0,16 });
-		ImGui::SetNextWindowSize(ImVec2{ Renderer::s_window_width, Renderer::s_window_height - 16 });
-		if (ImGui::Begin("Tile Layout Viewer", &m_visible, ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings))
+		ImGui::SetNextWindowPos(ImVec2{ 16.0f, 40.0f }, ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(
+			ImVec2{
+				std::max(720.0f, static_cast<float>(Renderer::s_window_width) - 32.0f),
+				std::max(520.0f, static_cast<float>(Renderer::s_window_height) - 64.0f)
+			},
+			ImGuiCond_FirstUseEver
+		);
+		if (ImGui::Begin(
+			"Level Editor - Tile Layout Viewer",
+			&m_visible,
+			ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_MenuBar
+		))
 		{
 			RenderRequestType render_request = DrawMenuBar();
 			if (render_request != RenderRequestType::NONE)
@@ -633,6 +592,8 @@ namespace spintool
 			{
 				m_tileset_preview_list.clear();
 				m_tile_picker_list.clear();
+				m_tile_picker_layers.clear();
+				m_tile_picker_layer_names.clear();
 			}
 			m_render_from_edit = false;
 
@@ -676,7 +637,28 @@ namespace spintool
 			}
 			else
 			{
-				m_working_tileset = rom::TileSet::LoadFromROM(m_owning_ui.GetROM(), request.tileset_address, request.compression_algorithm).tileset;
+				const auto shared_tileset = std::find_if(
+					m_tile_picker_layers.begin(),
+					m_tile_picker_layers.end(),
+					[&request](const rom::TileLayer& layer)
+					{
+						return layer.tileset &&
+							layer.tileset->rom_data.rom_offset == request.tileset_address &&
+							layer.tileset->compression_algorithm == request.compression_algorithm;
+					}
+				);
+				if (shared_tileset != m_tile_picker_layers.end())
+				{
+					m_working_tileset = shared_tileset->tileset;
+				}
+				else
+				{
+					m_working_tileset = rom::TileSet::LoadFromROM(
+						m_owning_ui.GetROM(),
+						request.tileset_address,
+						request.compression_algorithm
+					).tileset;
+				}
 				if (request.store_tileset != nullptr)
 				{
 					*request.store_tileset = m_working_tileset;
@@ -743,6 +725,16 @@ namespace spintool
 			{
 				m_tileset_preview_list.emplace_back();
 				m_tile_picker_list.emplace_back(m_owning_ui);
+				rom::TileLayer picker_layer;
+				picker_layer.tileset = m_working_tileset;
+				picker_layer.tile_layout = m_working_tile_layout;
+				picker_layer.palette_set = m_working_palette_set;
+				m_tile_picker_layers.emplace_back(std::move(picker_layer));
+				m_tile_picker_layer_names.emplace_back(
+					request.layout_layout_name.empty()
+						? "Tileset"
+						: request.layout_layout_name
+				);
 				if (render_request == RenderRequestType::LEVEL)
 				{
 					m_working_tile_layout->CollapseTilesIntoBrushes(*m_working_tileset);
@@ -1089,23 +1081,22 @@ namespace spintool
 					{
 						if (ImGui::BeginTabBar("tile_layers"))
 						{
-							static const char* layer_names[] =
-							{
-								"Background",
-								"Foreground"
-							};
-
-							int tab_index = 0;
-							for (size_t layer_index = 0; layer_index < m_tile_picker_list.size(); ++layer_index)
+							for (size_t layer_index = 0;
+								layer_index < m_tile_picker_list.size() &&
+								layer_index < m_tile_picker_layers.size();
+								++layer_index)
 							{
 								TilePicker& tile_picker = m_tile_picker_list[layer_index];
-								tile_picker.SetTileLayer(m_level != nullptr ? &m_level->m_tile_layers[layer_index] : nullptr);
-								if (ImGui::BeginTabItem(layer_names[tab_index++]))
+								tile_picker.SetTileLayer(&m_tile_picker_layers[layer_index]);
+								const char* layer_name = layer_index < m_tile_picker_layer_names.size()
+									? m_tile_picker_layer_names[layer_index].c_str()
+									: "Tileset";
+								if (ImGui::BeginTabItem(layer_name))
 								{
 									if (ImGui::Button("Pick from layout"))
 									{
 										m_selected_tile.is_picking_from_layout = true;
-										m_selected_tile.tile_layer = m_level ? &m_level->m_tile_layers[layer_index] : nullptr;
+										m_selected_tile.tile_layer = &m_tile_picker_layers[layer_index];
 										m_selected_tile.tile_picker = &tile_picker;
 									}
 
@@ -1115,7 +1106,7 @@ namespace spintool
 									if (had_selection == false && tile_picker.currently_selected_tile != nullptr)
 									{
 										m_selected_tile.tile_selection = tile_picker.GetSelectedTile();
-										m_selected_tile.tile_layer = m_level ? &m_level->m_tile_layers[layer_index] : nullptr;
+										m_selected_tile.tile_layer = &m_tile_picker_layers[layer_index];
 										m_selected_tile.tile_picker = &tile_picker;
 										has_just_selected_item = true;
 									}
@@ -1760,6 +1751,9 @@ namespace spintool
 										std::ofstream custom_brushes_file{ custom_brushes_path };
 										nlohmann::json custom_brushes = new_brush.SerialiseToJSON();
 										custom_brushes_file << custom_brushes.dump(4);
+										custom_brushes_file.flush();
+										custom_brushes_file.close();
+										web::SyncPersistentStorage();
 
 										has_just_selected_item = true;
 									}
@@ -2892,43 +2886,6 @@ namespace spintool
 			}
 			break;
 
-			case RenderRequestType::OPTIONS:
-			{
-				Reset();
-
-				RenderTileLayoutRequest request;
-
-				request.tileset_address =
-					rom::MenuBackgroundDecoder::ResolveArtHeaderOffset(
-						m_owning_ui.GetROM());
-				request.tile_brushes_address =
-					rom::MenuBackgroundDecoder::ResolveBrushesOffset(
-						m_owning_ui.GetROM());
-				request.tile_brushes_address_end =
-					rom::MenuBackgroundDecoder::ResolveBrushesEndOffset(
-						m_owning_ui.GetROM());
-				request.tile_layout_address =
-					rom::MenuBackgroundDecoder::ResolveLayoutOffset(
-						m_owning_ui.GetROM());
-				request.tile_layout_address_end =
-					rom::MenuBackgroundDecoder::ResolveLayoutEndOffset(
-						m_owning_ui.GetROM());
-
-				request.tile_brush_width = 4;
-				request.tile_brush_height = 4;
-
-				request.tile_layout_width = 0xA;
-				request.tile_layout_height = 0x7;
-
-				request.is_chroma_keyed = false;
-				request.compression_algorithm = CompressionAlgorithm::SSC;
-
-				m_working_palette_set = *m_owning_ui.GetROM().GetOptionsScreenPaletteSet();
-
-				m_tile_layout_render_requests.emplace_back(std::move(request));
-			}
-			break;
-
 			case RenderRequestType::INTRO:
 			case RenderRequestType::INTRO_BACKGROUND:
 			case RenderRequestType::INTRO_FOREGROUND:
@@ -3046,55 +3003,6 @@ namespace spintool
 
 					m_tile_layout_render_requests.emplace_back(std::move(request));
 				}
-			}
-			break;
-
-			case RenderRequestType::MENU:
-			case RenderRequestType::MENU_BACKGROUND:
-			case RenderRequestType::MENU_FOREGROUND:
-			{
-				Reset();
-
-				auto queue_frontend_layer = [&](bool background)
-				{
-					RenderTileLayoutRequest request;
-					request.tileset_address = ResolveMainMenuTileset(m_owning_ui.GetROM());
-					request.tile_layout_address = background
-						? ResolveMainMenuBackgroundLayout(m_owning_ui.GetROM())
-						: rom::MainMenuTileLayoutGiantBumper;
-
-					request.tile_layout_width = m_owning_ui.GetROM().ReadUint16(request.tile_layout_address);
-					request.tile_layout_height = m_owning_ui.GetROM().ReadUint16(request.tile_layout_address + sizeof(Uint16));
-					request.tile_layout_has_header = true;
-
-					const uint64_t layout_end =
-						static_cast<uint64_t>(request.tile_layout_address) + 4ULL +
-						(static_cast<uint64_t>(request.tile_layout_width) * request.tile_layout_height * 2ULL);
-					if (layout_end > m_owning_ui.GetROM().m_buffer.size())
-					{
-						std::cerr << "Skipping invalid Frontend " << (background ? "background" : "foreground")
-							<< " layout range\n";
-						return;
-					}
-					request.tile_layout_address_end = static_cast<Uint32>(layout_end);
-
-					request.palette_line = background ? 1 : 0;
-					request.tile_brush_width = 1;
-					request.tile_brush_height = 1;
-					request.is_chroma_keyed = !background;
-					request.show_brush_previews = false;
-					request.compression_algorithm = CompressionAlgorithm::LZSS;
-					request.layout_type_name = "frontend";
-					request.layout_layout_name = background ? "bg" : "fg";
-
-					m_working_palette_set = *m_owning_ui.GetROM().GetMainMenuPaletteSet();
-					m_tile_layout_render_requests.emplace_back(std::move(request));
-				};
-
-				if (render_request != RenderRequestType::MENU_FOREGROUND)
-					queue_frontend_layer(true);
-				if (render_request != RenderRequestType::MENU_BACKGROUND)
-					queue_frontend_layer(false);
 			}
 			break;
 

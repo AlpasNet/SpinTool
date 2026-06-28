@@ -72,3 +72,17 @@ The following libraries are required to build and run Spintool:
 On linux : mkdir build && cd build && cmake .. && make -j8
 
 See worklows actions about the commands used to compile a Linux native app and a Windows native app with a Linux Environment System
+
+## WebAssembly build
+
+SpinTool can also run entirely in a web browser through Emscripten and SDL3.
+The browser build keeps the existing C++ ROM editor and Dear ImGui interface.
+
+```bash
+./web/build-web.sh
+python3 web/serve.py build-web
+```
+
+See [`WEB_BUILD.md`](WEB_BUILD.md) for Emscripten installation, browser storage,
+ROM import/export and hosting instructions. The GitHub Actions workflow
+`Build WebAssembly` also publishes a ready-to-host `SpinTool-Web` artifact.

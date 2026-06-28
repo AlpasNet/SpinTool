@@ -101,7 +101,7 @@ namespace spintool::rom
 			{
 				LZSSDecompressionResult results;
 				results.uncompressed_data = vram;
-				results.rom_data.SetROMData(offset, a0 + (d3 >> 3));
+				results.rom_data.SetROMData(offset, a0 + ((d3 + 7U) >> 3U));
 				results.uncompressed_size = results.uncompressed_data.size();
 
 				return results; // if yes, halt decompression
@@ -321,7 +321,7 @@ loc_F5B6A:  // CODE XREF : DoLoadCompressed2Tiles:loc_F5B7A
 			{
 				LZSSDecompressionResult results;
 				results.uncompressed_data = vram;
-				results.rom_data.SetROMData(offset, a0 + (current_bit >> 3));
+				results.rom_data.SetROMData(offset, a0 + ((current_bit + 7U) >> 3U));
 				results.uncompressed_size = results.uncompressed_data.size();
 
 				return results;

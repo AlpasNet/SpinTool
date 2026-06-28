@@ -37,7 +37,6 @@ namespace spintool
 		[[nodiscard]] static std::string GetFontError();
 
 		static SDLPaletteHandle CreateSDLPalette(const rom::Palette& palette);
-		static SDLPaletteHandle CreateSDLPaletteForSet(const rom::PaletteSet& palette_set);
 		static void SetPalette(const SDLPaletteHandle& palette);
 
 		static SDLTextureHandle RenderToTexture(const rom::Sprite& sprite, bool flip_x = false, bool flip_y = false);

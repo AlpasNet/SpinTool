@@ -1,6 +1,7 @@
 #include "ui/ui_file_selector.h"
 
 #include "ui/ui_editor.h"
+#include "platform/web_platform.h"
 
 #include "imgui.h"
 
@@ -15,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <unordered_map>
 
 namespace spintool
 {
@@ -50,6 +52,46 @@ std::optional<std::filesystem::path> DrawFileSelector(
     std::optional<std::filesystem::path> current_selection
 )
 {
+#if defined(__EMSCRIPTEN__)
+    static std::unordered_map<std::string, int> s_web_requests;
+    const std::string request_key = settings.object_typename;
+
+    if (settings.close_popup)
+    {
+        const auto request = s_web_requests.find(request_key);
+        if (request != s_web_requests.end())
+        {
+            web::ForgetFileRequest(request->second);
+            s_web_requests.erase(request);
+        }
+    }
+
+    if (settings.open_popup && !settings.close_popup &&
+        s_web_requests.find(request_key) == s_web_requests.end())
+    {
+        const int request_id = web::RequestFile(
+            settings.file_extension_filter,
+            settings.target_directory
+        );
+        if (request_id != 0)
+        {
+            s_web_requests.emplace(request_key, request_id);
+        }
+    }
+
+    const auto request = s_web_requests.find(request_key);
+    if (request != s_web_requests.end() && web::FileRequestFinished(request->second))
+    {
+        const int request_id = request->second;
+        const std::optional<std::filesystem::path> selected_path =
+            web::PollSelectedFile(request_id);
+        web::ForgetFileRequest(request_id);
+        s_web_requests.erase(request);
+        return selected_path;
+    }
+
+    return std::nullopt;
+#else
     static std::vector<FileSelectorEntry> s_file_entries;
     static std::optional<std::filesystem::path> s_highlighted_path;
 
@@ -405,6 +447,7 @@ std::optional<std::filesystem::path> DrawFileSelector(
     }
 
     return return_path;
+#endif
 }
 
 }

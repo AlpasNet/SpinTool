@@ -8,12 +8,12 @@
 
 #include "imgui.h"
 #include "ui/ui_palette_viewer.h"
-#include "ui/ui_file_selector.h"
 #include "ui/ui_editor.h"
 #include "SDL3/SDL_image.h"
 
 #include <filesystem>
 #include <string>
+#include <cstdio>
 
 namespace spintool
 {
@@ -90,7 +90,7 @@ namespace spintool
 			sprite_tile->y_offset = static_cast<Sint16>((current_brush_offset - (current_brush_offset % picker_width)) / picker_width) * rom::TileSet::s_tile_height;
 
 			max_x_size = std::max(max_x_size, sprite_tile->x_offset + rom::TileSet::s_tile_width);
-			max_y_size = std::max(max_x_size, sprite_tile->y_offset + rom::TileSet::s_tile_height);
+			max_y_size = std::max(max_y_size, sprite_tile->y_offset + rom::TileSet::s_tile_height);
 
 			sprite_tile->blit_settings.flip_horizontal = false;
 			sprite_tile->blit_settings.flip_vertical = false;
@@ -127,6 +127,7 @@ namespace spintool
 		}
 
 		m_texture = Renderer::RenderToTexture(m_surface.get());
+		m_rendered_tileset_revision = m_tile_layer->tileset->revision;
 	}
 
 	void TilePicker::Draw()
@@ -137,6 +138,11 @@ namespace spintool
 		{
 			ImGui::TextUnformatted("<No valid tileset loaded>");
 			return;
+		}
+
+		if (m_rendered_tileset_revision != m_tile_layer->tileset->revision)
+		{
+			RenderTileset();
 		}
 
 		if (spintool::DrawPaletteLineSelector(current_palette_line, m_tile_layer->palette_set))
@@ -169,6 +175,13 @@ namespace spintool
 						const ImVec2 max = ImVec2{ static_cast<float>(min.x + (tile.x_size * zoom) + 1), static_cast<float>(min.y + (tile.y_size * zoom) + 1) };
 						const bool is_hovered = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(min, max);
 
+						if (is_hovered)
+						{
+							ImGui::BeginTooltip();
+							ImGui::Text("Tile: %u (0x%03X)", target_index, target_index);
+							ImGui::EndTooltip();
+						}
+
 						if (is_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 						{
 							currently_selected_tile = &tile;
@@ -176,6 +189,8 @@ namespace spintool
 
 						if (is_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
 						{
+							currently_selected_tile = &tile;
+							m_context_tile_index = target_index;
 							ImGui::OpenPopup("TilesetOptions");
 						}
 
@@ -188,39 +203,127 @@ namespace spintool
 					}
 				}
 
-				static FileSelectorSettings settings;
-				settings.object_typename = "Image";
-				settings.target_directory = m_owning_ui.GetSpriteExportPath();
-				settings.file_extension_filter = { ".png", ".gif", ".bmp" };
-				settings.tiled_previews = true;
-				settings.num_columns = 4;
 
 				if (ImGui::BeginPopup("TilesetOptions"))
 				{
-					if (ImGui::Selectable("Import Image"))
+					const std::size_t tile_index = m_context_tile_index.value_or(0U);
+					const char* compression_name = "Unknown";
+					switch (m_tile_layer->tileset->compression_algorithm)
 					{
-						m_owning_ui.OpenImageImporter(const_cast<rom::TileSet&>(*m_tile_layer->tileset), m_tile_layer->palette_set);
+						case CompressionAlgorithm::SSC:
+							compression_name = "SSC";
+							break;
+						case CompressionAlgorithm::LZSS:
+							compression_name = "Compressed2 / LZW";
+							break;
+						case CompressionAlgorithm::NONE:
+						default:
+							break;
+					}
+					ImGui::TextDisabled("Tile %zu - %s", tile_index, compression_name);
+					ImGui::Separator();
+
+					if (ImGui::MenuItem(
+						"Import selected tile from PNG",
+						nullptr,
+						false,
+						m_tile_layer->tileset->compression_algorithm != CompressionAlgorithm::NONE &&
+						tile_index < m_tile_layer->tileset->tiles.size()
+					))
+					{
+						m_owning_ui.OpenImageImporter(
+							const_cast<rom::TileSet&>(*m_tile_layer->tileset),
+							m_tile_layer->palette_set,
+							tile_index
+						);
 					}
 
-					if (ImGui::Selectable("Export Tileset"))
+					if (ImGui::MenuItem(
+						"Import full tileset from PNG",
+						nullptr,
+						false,
+						m_tile_layer->tileset->compression_algorithm != CompressionAlgorithm::NONE &&
+						!m_tile_layer->tileset->tiles.empty()
+					))
 					{
-						static char path_buffer[2048];
-						sprintf(path_buffer, "spinball_tileset_%X02.png", static_cast<unsigned int>(m_tile_layer->tileset->rom_data.rom_offset));
-						std::filesystem::path export_path = m_owning_ui.GetSpriteExportPath().append(path_buffer);
-						if (current_palette_line >= 0 &&
-							static_cast<size_t>(current_palette_line) < m_tile_layer->palette_set.palette_lines.size() &&
-							m_tile_layer->palette_set.palette_lines[static_cast<size_t>(current_palette_line)])
+						m_owning_ui.OpenImageImporter(
+							const_cast<rom::TileSet&>(*m_tile_layer->tileset),
+							m_tile_layer->palette_set,
+							std::nullopt
+						);
+					}
+
+					if (ImGui::MenuItem(
+						"Export tile as PNG",
+						nullptr,
+						false,
+						tile_index < m_tile_layer->tileset->tiles.size()
+					))
+					{
+						const auto& palette_line =
+							m_tile_layer->palette_set.palette_lines[static_cast<std::size_t>(current_palette_line)];
+						SDLSurfaceHandle out_surface{ SDL_CreateSurface(
+							rom::TileSet::s_tile_width,
+							rom::TileSet::s_tile_height,
+							SDL_PIXELFORMAT_INDEX8
+						) };
+						if (out_surface && palette_line)
 						{
-							SDLSurfaceHandle out_surface = m_tile_layer->tileset->RenderToSurface(*m_tile_layer->palette_set.palette_lines[static_cast<size_t>(current_palette_line)]);
+							SDLPaletteHandle palette = Renderer::CreateSDLPalette(*palette_line);
+							SDL_SetSurfacePalette(out_surface.get(), palette.get());
+							const std::vector<Uint8>& pixels =
+								m_tile_layer->tileset->tiles[tile_index].pixel_data;
+							auto* destination = static_cast<Uint8*>(out_surface->pixels);
+							for (int y = 0; y < rom::TileSet::s_tile_height; ++y)
+							{
+								for (int x = 0; x < rom::TileSet::s_tile_width; ++x)
+								{
+									const std::size_t pixel_index =
+										static_cast<std::size_t>(y * rom::TileSet::s_tile_width + x);
+									destination[y * out_surface->pitch + x] =
+										pixel_index < pixels.size() ? pixels[pixel_index] : 0U;
+								}
+							}
+
+							char path_buffer[256];
+							std::snprintf(
+								path_buffer,
+								sizeof(path_buffer),
+								"spinball_tile_%06X_%04zu.png",
+								static_cast<unsigned int>(m_tile_layer->tileset->rom_data.rom_offset),
+								tile_index
+							);
+							const std::filesystem::path export_path =
+								m_owning_ui.GetSpriteExportPath() / path_buffer;
+							const std::string export_path_utf8 = PathToUtf8(export_path);
+							IMG_SavePNG(out_surface.get(), export_path_utf8.c_str());
+						}
+					}
+
+					ImGui::Separator();
+					if (ImGui::MenuItem("Export full tileset as PNG"))
+					{
+						char path_buffer[256];
+						std::snprintf(
+							path_buffer,
+							sizeof(path_buffer),
+							"spinball_tileset_%06X.png",
+							static_cast<unsigned int>(m_tile_layer->tileset->rom_data.rom_offset)
+						);
+						const std::filesystem::path export_path =
+							m_owning_ui.GetSpriteExportPath() / path_buffer;
+						if (current_palette_line >= 0 &&
+							static_cast<std::size_t>(current_palette_line) <
+								m_tile_layer->palette_set.palette_lines.size() &&
+							m_tile_layer->palette_set.palette_lines[static_cast<std::size_t>(current_palette_line)])
+						{
+							SDLSurfaceHandle out_surface = m_tile_layer->tileset->RenderToSurface(
+								*m_tile_layer->palette_set.palette_lines[static_cast<std::size_t>(current_palette_line)]
+							);
 							if (out_surface)
 							{
-								const std::string export_path_utf8 =
-									PathToUtf8(export_path);
-
-								IMG_SavePNG(
-									out_surface.get(),
-									export_path_utf8.c_str()
-								);
+								const std::string export_path_utf8 = PathToUtf8(export_path);
+								IMG_SavePNG(out_surface.get(), export_path_utf8.c_str());
 							}
 						}
 					}
@@ -247,7 +350,9 @@ namespace spintool
 
 	void TilePicker::SetTileLayer(rom::TileLayer* layer)
 	{
-		const bool render_required = m_tile_layer != layer;
+		const bool render_required = m_tile_layer != layer ||
+			(layer != nullptr && layer->tileset != nullptr &&
+				m_rendered_tileset_revision != layer->tileset->revision);
 		m_tile_layer = layer;
 		if (render_required)
 		{

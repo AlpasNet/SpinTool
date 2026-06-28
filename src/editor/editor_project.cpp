@@ -1,6 +1,7 @@
 #include "editor/editor_project.h"
 
 #include "ui/ui_editor.h"
+#include "platform/web_platform.h"
 #include "nlohmann/json.hpp"
 #include <fstream>
 
@@ -22,6 +23,9 @@ namespace spintool
 		project_config_json_writer["rom_location"] = m_rom_location;
 
 		project_config_out << project_config_json_writer.dump(4);
+		project_config_out.flush();
+		project_config_out.close();
+		web::SyncPersistentStorage();
 	}
 
 	std::unique_ptr<spintool::Project> Project::CreateProject(const std::string& project_name, const rom::SpinballROM& src_rom)

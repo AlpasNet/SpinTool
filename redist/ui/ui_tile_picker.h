@@ -55,5 +55,7 @@ namespace spintool
 
 	private:
 		rom::TileLayer* m_tile_layer = nullptr;
+		Uint64 m_rendered_tileset_revision = 0;
+		std::optional<std::size_t> m_context_tile_index;
 	};
 }

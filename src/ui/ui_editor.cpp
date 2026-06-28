@@ -4,6 +4,7 @@
 #include "rom/spinball_rom.h"
 #include "ui/ui_file_selector.h"
 #include "editor/editor_project.h"
+#include "platform/web_platform.h"
 
 #include "imgui.h"
 #include "nlohmann/json.hpp"
@@ -30,6 +31,9 @@ namespace spintool
 		std::filesystem::path SetupDirectory(const std::string& dir_name)
 		{
 			std::error_code error;
+#if defined(__EMSCRIPTEN__)
+			std::filesystem::path base_path{"/spintool"};
+#else
 			std::filesystem::path base_path =
 				std::filesystem::current_path(error);
 
@@ -39,6 +43,7 @@ namespace spintool
 					<< error.message() << '\n';
 				base_path = std::filesystem::path{"."};
 			}
+#endif
 
 			// Preserve SpinTool's original behaviour: all runtime folders are
 			// resolved from the directory used to launch the application.
@@ -87,9 +92,9 @@ namespace spintool
 		{
 			std::vector<std::filesystem::path> directories;
 			std::error_code error;
-			directories.push_back(std::filesystem::current_path(error) / "fonts");
-
-#if defined(_WIN32)
+#if defined(__EMSCRIPTEN__)
+			directories.emplace_back("/spintool/fonts");
+#elif defined(_WIN32)
 			if (const char* windows_directory = std::getenv("WINDIR"))
 			{
 				directories.emplace_back(
@@ -170,6 +175,8 @@ namespace spintool
 			config_json_writer[metadata.version_id] =
 				metadata.location_on_disk.string();
 		}
+		serialiser->Finalise();
+		web::SyncPersistentStorage();
 	}
 
 	void EditorUI::LoadROMConfig()
@@ -271,6 +278,8 @@ namespace spintool
 			writer["font_scale_percent"] =
 				static_cast<int>(m_font_scale * 100.0f + 0.5f);
 			writer["font_path"] = m_font_path.string();
+			serialiser->Finalise();
+			web::SyncPersistentStorage();
 		}
 		catch (const std::exception& error)
 		{
@@ -498,7 +507,7 @@ namespace spintool
 			m_current_rom_metadata->location_on_disk = reference_path;
 		}
 
-		m_palettes = m_rom.LoadPalettes(48);
+		m_palettes = m_rom.LoadPalettes(47);
 
 		std::cout << "Reference ROM: " << m_reference_rom_path << '\n';
 		std::cout << "Working ROM:   " << m_working_rom_path << '\n';
@@ -519,6 +528,9 @@ namespace spintool
 	{
 		float menu_bar_height = 0;
 		bool open_rom_popup = false;
+#if defined(__EMSCRIPTEN__)
+		bool open_font_popup = false;
+#endif
 
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		const ImVec2 viewport_min = viewport->Pos;
@@ -677,10 +689,17 @@ namespace spintool
 					ImGui::EndCombo();
 				}
 
+#if defined(__EMSCRIPTEN__)
+				if (ImGui::MenuItem("Import custom font..."))
+				{
+					open_font_popup = true;
+				}
+#else
 				if (ImGui::MenuItem("Refresh installed fonts"))
 				{
 					RefreshAvailableFonts();
 				}
+#endif
 
 				const std::string font_error = Renderer::GetFontError();
 				if (!font_error.empty())
@@ -742,10 +761,29 @@ namespace spintool
 			}
 			ImGui::EndDisabled();
 			ImGui::SameLine();
+#if defined(__EMSCRIPTEN__)
+			if (ImGui::Button("Open ROM"))
+#else
 			if (ImGui::Button("Change ROM Filename"))
+#endif
 			{
 				open_rom_popup = true;
 			}
+#if defined(__EMSCRIPTEN__)
+			if (IsROMLoaded())
+			{
+				ImGui::SameLine();
+				if (ImGui::Button("Download modified ROM"))
+				{
+					m_rom.SaveROM();
+					(void)web::DownloadFile(
+						m_working_rom_path,
+						"application/octet-stream",
+						m_working_rom_path.filename().string()
+					);
+				}
+			}
+#endif
 
 			static std::array<double, 32> rolling_frame_times{};
 			static size_t current_frame = 0;
@@ -812,13 +850,41 @@ namespace spintool
 			settings.close_popup = true;
 		}
 
+#if defined(__EMSCRIPTEN__)
+		static FileSelectorSettings font_settings;
+		font_settings.open_popup = open_font_popup;
+		font_settings.close_popup = false;
+		font_settings.object_typename = "Font";
+		font_settings.target_directory = std::filesystem::path{"/spintool/fonts"};
+		font_settings.file_extension_filter = { ".ttf", ".otf" };
+		const std::optional<std::filesystem::path> selected_font =
+			DrawFileSelector(font_settings, *this, m_font_path.empty()
+				? std::nullopt
+				: std::optional<std::filesystem::path>{m_font_path});
+		if (selected_font)
+		{
+			SelectFont(*selected_font);
+			RefreshAvailableFonts();
+		}
+#endif
+
 		{
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 0, 0 });
 			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, { 0, 0 });
 
+			int current_window_width = Renderer::s_window_width;
+			int current_window_height = Renderer::s_window_height;
+			if (Renderer::s_window != nullptr)
+			{
+				SDL_GetWindowSize(
+					Renderer::s_window,
+					&current_window_width,
+					&current_window_height
+				);
+			}
 			ImVec2 dim{
-				static_cast<float>(Renderer::s_window_width),
-				static_cast<float>(Renderer::s_window_height) - menu_bar_height
+				static_cast<float>(current_window_width),
+				std::max(1.0f, static_cast<float>(current_window_height) - menu_bar_height)
 			};
 
 			ImGui::SetNextWindowSize(dim, ImGuiCond_Always);
@@ -880,6 +946,7 @@ namespace spintool
 		m_tileset_navigator.Shutdown();
 		m_sprite_navigator.Shutdown();
 		m_sprite_importer.Shutdown();
+		web::SyncPersistentStorage();
 	}
 
 	bool EditorUI::IsROMLoaded() const
@@ -987,11 +1054,12 @@ namespace spintool
 
 	void EditorUI::OpenImageImporter(
 		rom::TileSet& tileset,
-		const rom::PaletteSet& available_palettes
+		const rom::PaletteSet& available_palettes,
+		std::optional<std::size_t> target_tile_index
 	)
 	{
 		m_sprite_importer.m_visible = true;
-		m_sprite_importer.SetTarget(tileset);
+		m_sprite_importer.SetTarget(tileset, target_tile_index);
 		m_sprite_importer.SetAvailablePalettes(
 			available_palettes.palette_lines
 		);

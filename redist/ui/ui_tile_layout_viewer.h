@@ -248,10 +248,6 @@ namespace spintool
 	{
 		NONE,
 		LEVEL,
-		MENU,
-		MENU_BACKGROUND,
-		MENU_FOREGROUND,
-		OPTIONS,
 		BONUS,
 		BONUS_BACKGROUND,
 		BONUS_FOREGROUND,
@@ -319,6 +315,8 @@ namespace spintool
 
 		std::vector<RenderTileLayoutRequest> m_tile_layout_render_requests;
 		std::vector<TilePicker> m_tile_picker_list;
+		std::vector<rom::TileLayer> m_tile_picker_layers;
+		std::vector<std::string> m_tile_picker_layer_names;
 		std::vector<TilesetPreview> m_tileset_preview_list;
 		std::vector<AnimSpriteEntry> m_anim_sprite_instances;
 

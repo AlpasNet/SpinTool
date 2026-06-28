@@ -14,6 +14,7 @@
 #include <vector>
 #include <memory>
 #include <variant>
+#include <optional>
 
 namespace spintool
 {
@@ -41,7 +42,10 @@ namespace spintool
 
 		void Update() override;
 		void SetTarget(rom::Sprite& target_sprite);
-		void SetTarget(rom::TileSet& target_tileset);
+		void SetTarget(
+			rom::TileSet& target_tileset,
+			std::optional<std::size_t> target_tile_index = std::nullopt
+		);
 		void SetAvailablePalettes(const std::vector<std::shared_ptr<rom::Palette>>& palette_lines);
 		void SetAvailablePalettes(const rom::PaletteSetArray& palette_set_lines);
 
@@ -66,9 +70,20 @@ namespace spintool
 		std::string m_loaded_path;
 
 		int m_selected_palette_index = 0;
-		int m_num_tiles_to_insert = 0;
-
 		bool m_force_update_write_location = false;
-		bool m_append_existing = true;
+		std::optional<std::size_t> m_target_tile_index;
+		std::string m_import_status;
+		std::string m_tile_import_result;
+		bool m_open_image_selector = false;
+		bool m_close_image_selector = false;
+
+		bool m_tileset_validation_ready = false;
+		bool m_tileset_validation_valid = false;
+		bool m_tileset_validation_identical = false;
+		std::size_t m_tileset_validation_stream_size = 0U;
+		std::size_t m_tileset_validation_capacity = 0U;
+		std::size_t m_tileset_validation_baseline_size = 0U;
+		std::string m_tileset_validation_strategy;
+		std::string m_tileset_validation_message;
 	};
 }

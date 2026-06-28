@@ -18,6 +18,7 @@
 #include <mutex>
 #include <vector>
 #include <string>
+#include <optional>
 
 namespace spintool
 {
@@ -62,7 +63,8 @@ namespace spintool
 		void OpenImageImporter(rom::Sprite& sprite);
 		void OpenImageImporter(
 			rom::TileSet& tileset,
-			const rom::PaletteSet& available_palettes
+			const rom::PaletteSet& available_palettes,
+			std::optional<std::size_t> target_tile_index = std::nullopt
 		);
 
 		std::recursive_mutex m_render_to_texture_mutex;

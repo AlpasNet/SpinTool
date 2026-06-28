@@ -20,6 +20,10 @@
 #include "backends/imgui_impl_sdl3.h"
 #include "ui/ui_palette.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/html5.h>
+#endif
+
 namespace
 {
 	std::optional<std::filesystem::path> g_pending_font_path;
@@ -164,39 +168,35 @@ namespace spintool
 		return new_palette;
 	}
 
-	SDLPaletteHandle Renderer::CreateSDLPaletteForSet(const rom::PaletteSet& palette_set)
-	{
-		SDLPaletteHandle new_palette{ SDL_CreatePalette(64) };
-		if (!new_palette)
-		{
-			std::cerr << "SDL_CreatePalette failed: " << SDL_GetError() << '\n';
-			return {};
-		}
-
-		for (size_t a = 0; a < 4; ++a)
-		{
-			if (!palette_set.palette_lines[a])
-			{
-				std::cerr << "Palette set contains a null palette line\n";
-				return {};
-			}
-
-			for (size_t i = 0; i < 16; ++i)
-			{
-				rom::Colour colour = palette_set.palette_lines[a]->palette_swatches[i].GetUnpacked();
-				new_palette->colors[(a * 16) + i] = { colour.r, colour.g, colour.b, 255 };
-			}
-		}
-		return new_palette;
-	}
 
 	bool Renderer::Initialise()
 	{
+		int initial_width = s_window_width;
+		int initial_height = s_window_height;
+		SDL_WindowFlags window_flags = static_cast<SDL_WindowFlags>(
+			SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY
+		);
+#if defined(__EMSCRIPTEN__)
+		SDL_SetHint(SDL_HINT_EMSCRIPTEN_CANVAS_SELECTOR, "#canvas");
+		double css_width = 0.0;
+		double css_height = 0.0;
+		if (emscripten_get_element_css_size("#canvas", &css_width, &css_height) == EMSCRIPTEN_RESULT_SUCCESS)
+		{
+			initial_width = std::max(640, static_cast<int>(css_width));
+			initial_height = std::max(480, static_cast<int>(css_height));
+		}
+#endif
+
+#if defined(__EMSCRIPTEN__)
+		const char* window_title = "SpinTool Web";
+#else
+		const char* window_title = "SpinTool";
+#endif
 		if (!SDL_CreateWindowAndRenderer(
-			"SpinTool",
-			s_window_width,
-			s_window_height,
-			SDL_WINDOW_RESIZABLE,
+			window_title,
+			initial_width,
+			initial_height,
+			window_flags,
 			&s_window,
 			&s_renderer))
 		{
@@ -211,10 +211,12 @@ namespace spintool
 			return false;
 		}
 
+#if !defined(__EMSCRIPTEN__)
 		if (!SDL_MaximizeWindow(s_window))
 		{
 			std::cerr << "SDL_MaximizeWindow failed: " << SDL_GetError() << '\n';
 		}
+#endif
 
 		if (!SDL_SetRenderDrawColor(s_renderer, 5, 10, 28, 255) ||
 			!SDL_RenderClear(s_renderer))
@@ -380,6 +382,23 @@ namespace spintool
 		{
 			return;
 		}
+
+#if defined(__EMSCRIPTEN__)
+		double css_width = 0.0;
+		double css_height = 0.0;
+		if (emscripten_get_element_css_size("#canvas", &css_width, &css_height) == EMSCRIPTEN_RESULT_SUCCESS)
+		{
+			int current_width = 0;
+			int current_height = 0;
+			SDL_GetWindowSize(s_window, &current_width, &current_height);
+			const int requested_width = std::max(1, static_cast<int>(css_width));
+			const int requested_height = std::max(1, static_cast<int>(css_height));
+			if (current_width != requested_width || current_height != requested_height)
+			{
+				SDL_SetWindowSize(s_window, requested_width, requested_height);
+			}
+		}
+#endif
 
 		ApplyPendingFontRequest();
 		ImGui_ImplSDLRenderer3_NewFrame();

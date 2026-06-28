@@ -4,6 +4,7 @@
 #include "rom/sprite.h"
 #include "rom/palette.h"
 #include "types/sdl_handle_defs.h"
+#include "platform/web_platform.h"
 
 #include <fstream>
 #include "SDL3/SDL_stdinc.h"
@@ -17,7 +18,7 @@ namespace spintool
 		std::ifstream input = std::ifstream{ path, std::ios::binary };
 		m_filepath = path;
 		m_buffer = std::vector<unsigned char>{ std::istreambuf_iterator<char>(input), {} };
-		m_palettes = LoadPalettes(48);
+		m_palettes = LoadPalettes(47);
 
 		return m_buffer.empty() == false;
 	}
@@ -26,6 +27,11 @@ namespace spintool
 	{
 		std::ofstream output = std::ofstream{ m_filepath, std::ios::binary };
 		output.write(reinterpret_cast<const char*>(m_buffer.data()), m_buffer.size());
+		output.flush();
+		if (output.good())
+		{
+			web::SyncPersistentStorage();
+		}
 	}
 
 	Uint32 rom::SpinballROM::GetOffsetForNextSprite(const rom::Sprite& current_sprite) const
@@ -55,18 +61,6 @@ namespace spintool
 			results.emplace_back(rom::Palette::LoadFromROM(*this, 0x000A1388 + (Palette::s_palette_size_on_rom * p)));
 		}
 
-		// The title screen has its own complete four-line palette set. Keep
-		// these lines in the general palette editor as well, so they can be
-		// modified with the same colour picker and immediate ROM saving used
-		// by the other uncompressed palettes. They are appended to preserve
-		// all existing palette indices.
-		for (Uint32 p = 0; p < 4; ++p)
-		{
-			results.emplace_back(rom::Palette::LoadFromROM(
-				*this,
-				0x0009BD3A + (Palette::s_palette_size_on_rom * p)
-			));
-		}
 		return results;
 	}
 
@@ -175,19 +169,6 @@ namespace spintool
 
 	//000bfc50 - Rom palette sets array
 
-	std::shared_ptr<rom::PaletteSet> rom::SpinballROM::GetOptionsScreenPaletteSet() const
-	{
-		auto palette_set = std::make_shared<rom::PaletteSet>();
-		palette_set->palette_lines =
-		{
-			rom::Palette::LoadFromROM(*this, 0x115C),
-			rom::Palette::LoadFromROM(*this, 0x117C),
-			rom::Palette::LoadFromROM(*this, 0x119C),
-			rom::Palette::LoadFromROM(*this, 0x11BC)
-		};
-		return palette_set;
-	}
-
 	std::shared_ptr<rom::PaletteSet> rom::SpinballROM::GetIntroCutscenePaletteSet() const
 	{
 		auto palette_set = std::make_shared<rom::PaletteSet>();
@@ -197,19 +178,6 @@ namespace spintool
 			rom::Palette::LoadFromROM(*this, 0x000A13A8),
 			rom::Palette::LoadFromROM(*this, 0x000A13C8),
 			rom::Palette::LoadFromROM(*this, 0x000A13E8)
-		};
-		return palette_set;
-	}
-
-	std::shared_ptr<rom::PaletteSet> rom::SpinballROM::GetMainMenuPaletteSet() const
-	{
-		auto palette_set = std::make_shared<rom::PaletteSet>();
-		palette_set->palette_lines =
-		{
-			rom::Palette::LoadFromROM(*this, 0x0009BD3A),
-			rom::Palette::LoadFromROM(*this, 0x0009BD5A),
-			rom::Palette::LoadFromROM(*this, 0x0009BD7A),
-			rom::Palette::LoadFromROM(*this, 0x0009BD9A)
 		};
 		return palette_set;
 	}

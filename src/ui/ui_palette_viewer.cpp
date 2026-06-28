@@ -5,9 +5,11 @@
 #include "render.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <string>
 #include <vector>
 
 
@@ -19,22 +21,23 @@ namespace spintool
 		constexpr int kHueShadeSamples = 29;
 
 		constexpr Uint32 kLevelPaletteOffset = 0x00000DFCU;
-		constexpr Uint32 kLevelPaletteCount = 48U;
+		constexpr Uint32 kLevelPaletteCount = 47U;
+		constexpr Uint32 kBonusStagePaletteOffset =
+			kLevelPaletteOffset + (0x1FU * rom::Palette::s_palette_size_on_rom);
+		constexpr Uint32 kBonusStagePaletteCount = 16U;
 		constexpr Uint32 kSegaLogoPaletteOffset = 0x000993FAU;
 		constexpr Uint32 kSegaLogoPaletteCount = 2U;
 		constexpr Uint32 kIntroPaletteOffset = 0x000A1388U;
 		constexpr Uint32 kIntroPaletteCount = 4U;
-		constexpr Uint32 kTitleScreenPaletteOffset = 0x0009BD3AU;
-		constexpr Uint32 kTitleScreenPaletteCount = 4U;
 		constexpr Uint32 kSharedMenuPaletteOffset = 0x0000115CU;
 		constexpr Uint32 kSharedMenuPaletteCount = 4U;
 
 		enum class PaletteGroup
 		{
 			Level,
+			BonusStage,
 			SegaLogo,
 			Introduction,
-			TitleScreen,
 			SharedMenu,
 			Other
 		};
@@ -57,12 +60,17 @@ namespace spintool
 
 		PaletteGroup GetPaletteGroup(const Uint32 offset)
 		{
-			// These four lines live inside the broad 48-line table, so identify
-			// the shared Options/Hi-Score/Credits set before the generic range.
+			// These four lines live inside the level-palette table, so identify
+			// the shared Options/Hi-Score/Credits set before the generic ranges.
 			if (IsPaletteLineInRange(
 				offset, kSharedMenuPaletteOffset, kSharedMenuPaletteCount))
 			{
 				return PaletteGroup::SharedMenu;
+			}
+			if (IsPaletteLineInRange(
+				offset, kBonusStagePaletteOffset, kBonusStagePaletteCount))
+			{
+				return PaletteGroup::BonusStage;
 			}
 			if (IsPaletteLineInRange(offset, kLevelPaletteOffset, kLevelPaletteCount))
 			{
@@ -76,10 +84,6 @@ namespace spintool
 			{
 				return PaletteGroup::Introduction;
 			}
-			if (IsPaletteLineInRange(offset, kTitleScreenPaletteOffset, kTitleScreenPaletteCount))
-			{
-				return PaletteGroup::TitleScreen;
-			}
 			return PaletteGroup::Other;
 		}
 
@@ -88,13 +92,13 @@ namespace spintool
 			switch (group)
 			{
 				case PaletteGroup::Level:
-					return "Level Palettes";
+					return "Main Level Palettes";
+				case PaletteGroup::BonusStage:
+					return "Bonus Stage Palettes";
 				case PaletteGroup::SegaLogo:
 					return "SEGA Logo";
 				case PaletteGroup::Introduction:
 					return "Introduction";
-				case PaletteGroup::TitleScreen:
-					return "Title Screen";
 				case PaletteGroup::SharedMenu:
 					return "Options / Hi-Score / Credits";
 				case PaletteGroup::Other:
@@ -111,14 +115,14 @@ namespace spintool
 				case PaletteGroup::Level:
 					range_start = kLevelPaletteOffset;
 					break;
+				case PaletteGroup::BonusStage:
+					range_start = kBonusStagePaletteOffset;
+					break;
 				case PaletteGroup::SegaLogo:
 					range_start = kSegaLogoPaletteOffset;
 					break;
 				case PaletteGroup::Introduction:
 					range_start = kIntroPaletteOffset;
-					break;
-				case PaletteGroup::TitleScreen:
-					range_start = kTitleScreenPaletteOffset;
 					break;
 				case PaletteGroup::SharedMenu:
 					range_start = kSharedMenuPaletteOffset;
@@ -129,6 +133,64 @@ namespace spintool
 			}
 
 			return (palette.offset - range_start) / rom::Palette::s_palette_size_on_rom;
+		}
+
+		const char* LevelPaletteUsageName(const Uint32 line_number)
+		{
+			static constexpr std::array<const char*, kLevelPaletteCount> kUsageNames =
+			{
+				"Lava Powerhouse - Line 0 (base)",                         // 00
+				"Lava Powerhouse - Line 1 (base)",                         // 01
+				"All main levels - Line 2 (shared)",                        // 02
+				"Lava Powerhouse - Line 3 (base)",                         // 03
+				"Lava Powerhouse - Line 3 (upper-area variant)",        // 04
+				"Lava Powerhouse - Line 1 (upper-area variant)",        // 05
+				"Toxic Caves - Line 0 (lowest camera zone)",               // 06
+				"Toxic Caves - Line 0 (lower-middle camera zone)",         // 07
+				"Toxic Caves - Line 0 (middle camera zone)",               // 08
+				"Toxic Caves - Line 0 (upper-middle camera zone)",         // 09
+				"Toxic Caves - Line 0 (highest camera zone)",              // 0A
+				"Toxic Caves - Line 1 (lowest camera zone)",               // 0B
+				"Toxic Caves - Line 1 (lower-middle camera zone)",         // 0C
+				"Toxic Caves - Line 1 (middle camera zone)",               // 0D
+				"Toxic Caves - Line 1 (upper-middle camera zone)",         // 0E
+				"Toxic Caves - Line 1 (highest camera zone)",              // 0F
+				"Toxic Caves - Line 3 (base / lower area)",                // 10
+				"Toxic Caves - Line 3 (upper-area variant)",               // 11
+				"Temporary gameplay/event effect - Line 3",                // 12
+				"Showdown - Line 0",                                        // 13
+				"Showdown - Line 1",                                        // 14
+				"Unused / unreferenced palette",                            // 15
+				"Showdown - Line 3",                                        // 16
+				"Unused / unreferenced palette",                            // 17
+				"The Machine - Line 0",                                     // 18
+				"The Machine - Line 1",                                     // 19
+				"The Machine - Line 3",                                     // 1A
+				"Options / Hi-Score / Credits - Line 0",                   // 1B
+				"Options / Hi-Score / Credits - Line 1",                   // 1C
+				"Options / Hi-Score / Credits - Line 2",                   // 1D
+				"Options / Hi-Score / Credits - Line 3",                   // 1E
+				"Bonus Stage 1 - Line 0",                                  // 1F
+				"Bonus Stage 1 - Line 1",                                  // 20
+				"Bonus Stage 1 - Line 2",                                  // 21
+				"Bonus Stage 1 - Line 3",                                  // 22
+				"Bonus Stage 2 - Line 0",                                  // 23
+				"Bonus Stage 2 - Line 1",                                  // 24
+				"Bonus Stage 2 - Line 2",                                  // 25
+				"Bonus Stage 2 - Line 3",                                  // 26
+				"Bonus Stage 3 - Line 0",                                  // 27
+				"Bonus Stage 3 - Line 1",                                  // 28
+				"Bonus Stage 3 - Line 2",                                  // 29
+				"Bonus Stage 3 - Line 3",                                  // 2A
+				"Bonus Stage 4 - Line 0",                                  // 2B
+				"Bonus Stage 4 - Line 1",                                  // 2C
+				"Bonus Stage 4 - Line 2",                                  // 2D
+				"Bonus Stage 4 - Line 3"                                   // 2E
+			};
+
+			return line_number < kUsageNames.size()
+				? kUsageNames[line_number]
+				: "Unknown level palette";
 		}
 
 		enum class ColourSelectionMode
@@ -163,6 +225,7 @@ namespace spintool
 		};
 
 		PaletteColourEditorState g_colour_editor;
+		bool g_open_colour_editor_requested = false;
 
 		ImVec4 PackedToImVec4(const Uint16 packed)
 		{
@@ -674,7 +737,7 @@ namespace spintool
 			g_colour_editor.hue_shades.clear();
 			SyncRGBInputsFromPacked(g_colour_editor);
 			SetHueFromPacked(g_colour_editor, packed);
-			ImGui::OpenPopup(kColourEditorPopup);
+			g_open_colour_editor_requested = true;
 		}
 
 		bool DrawColourEditorPopup(
@@ -939,19 +1002,82 @@ namespace spintool
 	void DrawPaletteName(const rom::Palette& palette, int palette_index)
 	{
 		const PaletteGroup group = GetPaletteGroup(palette.offset);
-		if (group == PaletteGroup::Level || group == PaletteGroup::Other)
+		if (group == PaletteGroup::Level ||
+			group == PaletteGroup::BonusStage ||
+			group == PaletteGroup::SharedMenu)
+		{
+			const Uint32 level_table_line =
+				(palette.offset - kLevelPaletteOffset) /
+				rom::Palette::s_palette_size_on_rom;
+			ImGui::Text(
+				"Palette %02X - %s (ROM 0x%06X)",
+				static_cast<unsigned int>(level_table_line),
+				LevelPaletteUsageName(level_table_line),
+				palette.offset
+			);
+			return;
+		}
+
+		if (group == PaletteGroup::Other)
 		{
 			ImGui::Text(
-				"Palette %02X (ROM 0x%06X)",
+				"Palette %02X - Unknown usage (ROM 0x%06X)",
 				palette_index,
 				palette.offset
 			);
 			return;
 		}
 
+		const Uint32 line_number = PaletteLineNumber(palette, group);
 		ImGui::Text(
-			"Line %u (ROM 0x%06X)",
-			static_cast<unsigned int>(PaletteLineNumber(palette, group)),
+			"%s - Line %u (ROM 0x%06X)",
+			PaletteGroupName(group),
+			static_cast<unsigned int>(line_number),
+			palette.offset
+		);
+	}
+
+	void DrawPaletteNameForPaletteMenu(const rom::Palette& palette, int palette_index)
+	{
+		const PaletteGroup group = GetPaletteGroup(palette.offset);
+		if (group == PaletteGroup::Level ||
+			group == PaletteGroup::BonusStage ||
+			group == PaletteGroup::SharedMenu)
+		{
+			const Uint32 level_table_line =
+				(palette.offset - kLevelPaletteOffset) /
+				rom::Palette::s_palette_size_on_rom;
+			std::string usage = LevelPaletteUsageName(level_table_line);
+			const std::string marker = " - Line";
+			const std::size_t line_position = usage.find(marker);
+			if (line_position != std::string::npos)
+			{
+				usage.replace(line_position, marker.size(), "\nLine");
+			}
+			ImGui::Text(
+				"Palette %02X - %s (ROM 0x%06X)",
+				static_cast<unsigned int>(level_table_line),
+				usage.c_str(),
+				palette.offset
+			);
+			return;
+		}
+
+		if (group == PaletteGroup::Other)
+		{
+			ImGui::Text(
+				"Palette %02X - Unknown usage (ROM 0x%06X)",
+				palette_index,
+				palette.offset
+			);
+			return;
+		}
+
+		const Uint32 line_number = PaletteLineNumber(palette, group);
+		ImGui::Text(
+			"%s\nLine %u (ROM 0x%06X)",
+			PaletteGroupName(group),
+			static_cast<unsigned int>(line_number),
 			palette.offset
 		);
 	}
@@ -974,7 +1100,10 @@ namespace spintool
 				swatch_index
 			);
 
-			ImGui::SameLine();
+			if (swatch_index > 0)
+			{
+				ImGui::SameLine();
+			}
 			const bool is_selected =
 				g_colour_editor.palette_index == palette_index &&
 				g_colour_editor.swatch_index == swatch_index;
@@ -1092,6 +1221,10 @@ namespace spintool
 				"Click a colour square to edit it. All values are converted to "
 				"Mega Drive-compatible levels."
 			);
+			ImGui::TextDisabled(
+				"Usage labels identify the matching level, screen and palette line. "
+				"Camera-zone variants are selected automatically by the game."
+			);
 			ImGui::Spacing();
 
 			bool palette_changed = false;
@@ -1102,31 +1235,79 @@ namespace spintool
 				ImGuiWindowFlags_HorizontalScrollbar
 			))
 			{
-				int palette_index = 0;
-				PaletteGroup previous_group = PaletteGroup::Other;
-				bool has_previous_group = false;
-				for (std::shared_ptr<rom::Palette>& palette : palettes)
+				constexpr float kPaletteTextColumnWidth = 570.0f;
+				constexpr float kPaletteSwatchColumnWidth =
+					16.0f * 28.0f + 15.0f * 4.0f + 12.0f;
+				const ImGuiTableFlags table_flags =
+					ImGuiTableFlags_BordersInnerV |
+					ImGuiTableFlags_RowBg |
+					ImGuiTableFlags_SizingFixedFit;
+
+				if (ImGui::BeginTable(
+					"palette_usage_table",
+					2,
+					table_flags
+				))
 				{
-					if (!palette)
-					{
-						++palette_index;
-						continue;
-					}
-
-					const PaletteGroup current_group = GetPaletteGroup(palette->offset);
-					if (!has_previous_group || current_group != previous_group)
-					{
-						ImGui::SeparatorText(PaletteGroupName(current_group));
-						previous_group = current_group;
-						has_previous_group = true;
-					}
-
-					DrawPaletteName(*palette, palette_index);
-					palette_changed |= DrawPaletteSwatchEditor(
-						*palette,
-						palette_index
+					ImGui::TableSetupColumn(
+						"Usage",
+						ImGuiTableColumnFlags_WidthFixed,
+						kPaletteTextColumnWidth
 					);
-					++palette_index;
+					ImGui::TableSetupColumn(
+						"Palette",
+						ImGuiTableColumnFlags_WidthFixed,
+						kPaletteSwatchColumnWidth
+					);
+					ImGui::TableHeadersRow();
+
+					int palette_index = 0;
+					PaletteGroup previous_group = PaletteGroup::Other;
+					bool has_previous_group = false;
+					for (std::shared_ptr<rom::Palette>& palette : palettes)
+					{
+						if (!palette)
+						{
+							++palette_index;
+							continue;
+						}
+
+						const PaletteGroup current_group = GetPaletteGroup(palette->offset);
+						if (!has_previous_group || current_group != previous_group)
+						{
+							ImGui::TableNextRow();
+							ImGui::TableSetColumnIndex(0);
+							ImGui::SeparatorText(PaletteGroupName(current_group));
+							ImGui::TableSetColumnIndex(1);
+							ImGui::Separator();
+							previous_group = current_group;
+							has_previous_group = true;
+						}
+
+						ImGui::TableNextRow(ImGuiTableRowFlags_None, 54.0f);
+						ImGui::TableSetColumnIndex(0);
+						ImGui::AlignTextToFramePadding();
+						DrawPaletteNameForPaletteMenu(*palette, palette_index);
+
+						ImGui::TableSetColumnIndex(1);
+						palette_changed |= DrawPaletteSwatchEditor(
+							*palette,
+							palette_index
+						);
+						++palette_index;
+					}
+
+					ImGui::EndTable();
+				}
+
+				// A swatch is clicked while the palette table has its own ImGui ID
+				// scope. Open the modal only after EndTable(), from the same scope
+				// used by BeginPopupModal(), otherwise the popup ID does not match
+				// and the click appears to do nothing.
+				if (g_open_colour_editor_requested)
+				{
+					ImGui::OpenPopup(kColourEditorPopup);
+					g_open_colour_editor_requested = false;
 				}
 
 				palette_changed |= DrawColourEditorPopup(m_owning_ui, palettes, m_status);

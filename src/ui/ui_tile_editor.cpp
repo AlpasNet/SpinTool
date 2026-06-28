@@ -6,6 +6,9 @@
 #include "rom/tile_brush.h"
 #include "rom/tile.h"
 
+#include <algorithm>
+#include <cstdio>
+
 namespace spintool
 {
 	void EditorTileEditor::RenderBrush()
@@ -48,9 +51,19 @@ namespace spintool
 			return;
 		}
 
-		ImGui::SetNextWindowPos(ImVec2{ 0,16 });
-		ImGui::SetNextWindowSize(ImVec2{ Renderer::s_window_width, Renderer::s_window_height - 16 });
-		if (ImGui::Begin("Brush Editor", &m_visible, ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings))
+		ImGui::SetNextWindowPos(ImVec2{ 32.0f, 56.0f }, ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(
+			ImVec2{
+				std::max(680.0f, static_cast<float>(Renderer::s_window_width) - 64.0f),
+				std::max(480.0f, static_cast<float>(Renderer::s_window_height) - 96.0f)
+			},
+			ImGuiCond_FirstUseEver
+		);
+		if (ImGui::Begin(
+			"Brush Editor",
+			&m_visible,
+			ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_MenuBar
+		))
 		{
 			if (m_target_brush == nullptr)
 			{
@@ -65,6 +78,19 @@ namespace spintool
 			if (ImGui::Button("Close Window"))
 			{
 				m_visible = false;
+			}
+
+			ImGui::SameLine();
+			ImGui::Checkbox("Show tile IDs", &m_show_tile_ids);
+
+			if (m_tile_picker.currently_selected_tile != nullptr)
+			{
+				const size_t selected_tile_index = m_tile_picker.GetSelectedTileIndex();
+				ImGui::Text("Selected tileset tile: %zu (0x%03zX)", selected_tile_index, selected_tile_index);
+			}
+			else
+			{
+				ImGui::TextDisabled("Selected tileset tile: none");
 			}
 			
 			m_tile_picker.Draw();
@@ -120,7 +146,13 @@ namespace spintool
 
 						if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
 						{
-							m_tile_picker.currently_selected_tile = m_tile_picker.tiles[m_target_brush->tiles[target_index].tile_index].get();
+							const int used_tile_index = m_target_brush->tiles[target_index].tile_index;
+							if (used_tile_index >= 0 &&
+								static_cast<size_t>(used_tile_index) < m_tile_picker.tiles.size())
+							{
+								m_tile_picker.currently_selected_tile =
+									m_tile_picker.tiles[static_cast<size_t>(used_tile_index)].get();
+							}
 						}
 
 						if (ImGui::IsKeyPressed(ImGuiKey_R, false))
@@ -141,13 +173,48 @@ namespace spintool
 							m_tile_brush_changed = true;
 						}
 					}
-					const bool is_high_priority = m_target_brush->tiles[target_index].is_high_priority;
+					const rom::TileInstance& brush_tile = m_target_brush->tiles[target_index];
+					const bool is_high_priority = brush_tile.is_high_priority;
 					ImGuiCol grid_colour = is_high_priority == false ? ImGui::GetColorU32(ImVec4(255, 0, 0, 255)) : ImGui::GetColorU32(ImVec4(255, 0, 255, 255));
 					if (is_hovered)
 					{
 						grid_colour = is_high_priority == false ? ImGui::GetColorU32(ImVec4(255, 255, 0, 255)) : ImGui::GetColorU32(ImVec4(255, 255, 255, 255));
 					}
-					ImGui::GetWindowDrawList()->AddRect(min, max, grid_colour);
+
+					ImDrawList* draw_list = ImGui::GetWindowDrawList();
+					draw_list->AddRect(min, max, grid_colour);
+
+					if (m_show_tile_ids)
+					{
+						char tile_id_text[32]{};
+						std::snprintf(tile_id_text, sizeof(tile_id_text), "%d", brush_tile.tile_index);
+						const ImVec2 text_size = ImGui::CalcTextSize(tile_id_text);
+						const ImVec2 text_pos{
+							min.x + std::max(1.0f, ((max.x - min.x) - text_size.x) * 0.5f),
+							min.y + std::max(1.0f, ((max.y - min.y) - text_size.y) * 0.5f)
+						};
+						draw_list->AddRectFilled(
+							ImVec2{ text_pos.x - 2.0f, text_pos.y - 1.0f },
+							ImVec2{ text_pos.x + text_size.x + 2.0f, text_pos.y + text_size.y + 1.0f },
+							IM_COL32(0, 0, 0, 176),
+							2.0f
+						);
+						draw_list->AddText(text_pos, IM_COL32(255, 255, 255, 255), tile_id_text);
+					}
+
+					if (is_hovered)
+					{
+						ImGui::BeginTooltip();
+						ImGui::Text("Brush cell: %u, %u", grid_x, grid_y);
+						ImGui::Text("Tile: %d (0x%03X)", brush_tile.tile_index, brush_tile.tile_index);
+						ImGui::Text("Palette line: %u", static_cast<unsigned int>(brush_tile.palette_line));
+						ImGui::Text("Horizontal flip: %s", brush_tile.is_flipped_horizontally ? "Yes" : "No");
+						ImGui::Text("Vertical flip: %s", brush_tile.is_flipped_vertically ? "Yes" : "No");
+						ImGui::Text("Priority: %s", brush_tile.is_high_priority ? "High" : "Normal");
+						ImGui::Separator();
+						ImGui::TextDisabled("Middle-click to select this tile in the tileset.");
+						ImGui::EndTooltip();
+					}
 				}
 			}
 		}

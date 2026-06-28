@@ -1,0 +1,52 @@
+name: Build WebAssembly
+
+on:
+  push:
+    branches: ["main", "master"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: WebAssembly
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Emscripten SDK
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install latest
+          "$RUNNER_TEMP/emsdk/emsdk" activate latest
+
+      - name: Build SpinTool Web
+        shell: bash
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          ./web/build-web.sh
+
+      - name: Verify web package
+        shell: bash
+        run: |
+          test -s build-web/index.html
+          test -s build-web/index.js
+          test -s build-web/index.wasm
+          find build-web -maxdepth 1 -type f -printf '%f : %s bytes\n' | sort
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpinTool-Web
+          path: |
+            build-web/index.html
+            build-web/index.js
+            build-web/index.wasm
+          if-no-files-found: warn
+          retention-days: 30

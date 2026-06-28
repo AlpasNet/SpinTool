@@ -11,18 +11,27 @@ namespace spintool::rom
 {
 	TilesetEntry TileSet::LoadFromROM(const SpinballROM& src_rom, Uint32 rom_offset, CompressionAlgorithm compression_algorithm)
 	{
+		TilesetEntry entry;
 		switch (compression_algorithm)
 		{
 			case CompressionAlgorithm::SSC:
-				return LoadFromROM_SSCCompression(src_rom, rom_offset);
+				entry = LoadFromROM_SSCCompression(src_rom, rom_offset);
+				break;
 
 			case CompressionAlgorithm::LZSS:
-				return LoadFromROM_LZSSCompression(src_rom, rom_offset);
+				entry = LoadFromROM_LZSSCompression(src_rom, rom_offset);
+				break;
 
 			case CompressionAlgorithm::NONE:
 			default:
 				return TilesetEntry{};
 		}
+
+		if (entry.tileset)
+		{
+			entry.tileset->compression_algorithm = compression_algorithm;
+		}
+		return entry;
 	}
 
 	Ptr32 TileSet::SaveToROM_SSCCompression(SpinballROM& src_rom, Uint32 rom_offset) const
@@ -42,6 +51,7 @@ namespace spintool::rom
 	{
 		constexpr Uint32 uncompressed_tile_size = TileSet::s_tile_total_bytes;
 		auto new_tileset = std::make_unique<rom::TileSet>();
+		new_tileset->compression_algorithm = CompressionAlgorithm::SSC;
 
 		new_tileset->uncompressed_data.clear();
 
@@ -137,6 +147,7 @@ namespace spintool::rom
 	TilesetEntry TileSet::LoadFromROM_LZSSCompression(const SpinballROM& src_rom, Uint32 rom_offset)
 	{
 		auto new_tileset = std::make_unique<rom::TileSet>();
+		new_tileset->compression_algorithm = CompressionAlgorithm::LZSS;
 
 		//new_tileset->num_tiles = (static_cast<Sint16>(*(&src_rom.m_buffer[rom_offset])) << 8) | static_cast<Sint16>(*(&src_rom.m_buffer[rom_offset + 1]));
 		new_tileset->uncompressed_data.clear();

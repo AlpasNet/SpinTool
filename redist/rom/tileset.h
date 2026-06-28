@@ -43,6 +43,8 @@ namespace spintool::rom
 		ROMData rom_data;
 		Uint32 compressed_size = 0;
 		Uint32 uncompressed_size = 0;
+		CompressionAlgorithm compression_algorithm = CompressionAlgorithm::NONE;
+		Uint64 revision = 0;
 
 		Uint16 num_tiles = 0;
 		std::vector<Uint8> uncompressed_data;

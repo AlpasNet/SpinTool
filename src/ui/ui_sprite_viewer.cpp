@@ -63,6 +63,11 @@ namespace spintool
 					tile_tex.texture.reset();
 				}
 			}
+			ImGui::SameLine();
+			DrawPaletteName(
+				*m_owning_ui.GetPalettes().at(m_chosen_palette_index),
+				m_chosen_palette_index
+			);
 			DrawPaletteSwatchPreview(m_selected_palette);
 
 			char name_buffer[128];

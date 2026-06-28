@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#190b3c">
+    <title>SpinTool Web</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #080b20;
+        }
+        * { box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+        body {
+            background:
+                radial-gradient(circle at 15% 10%, rgba(124, 58, 237, .32), transparent 38%),
+                radial-gradient(circle at 85% 15%, rgba(37, 99, 235, .30), transparent 40%),
+                #080b20;
+        }
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            border: 0;
+            outline: none;
+            touch-action: none;
+        }
+        #loading {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            z-index: 20;
+            background: linear-gradient(135deg, rgba(42, 12, 83, .97), rgba(7, 42, 97, .97));
+            transition: opacity .25s ease;
+        }
+        #loading.hidden { opacity: 0; pointer-events: none; }
+        .browser-prompt {
+            position: fixed;
+            inset: 0;
+            z-index: 30;
+            display: grid;
+            place-items: center;
+            padding: 20px;
+            background: rgba(4, 7, 24, .72);
+            backdrop-filter: blur(5px);
+        }
+        .browser-prompt.hidden { display: none; }
+        .browser-prompt-card {
+            width: min(430px, 100%);
+            padding: 24px;
+            border: 1px solid rgba(147, 197, 253, .40);
+            border-radius: 16px;
+            background: linear-gradient(145deg, rgba(43, 18, 82, .98), rgba(10, 43, 91, .98));
+            box-shadow: 0 24px 80px rgba(0, 0, 0, .48);
+            text-align: center;
+        }
+        .browser-prompt-card h2 { margin: 0 0 10px; }
+        .browser-prompt-card p { margin: 0 0 20px; color: #d7e5ff; }
+        .browser-prompt-actions { display: flex; justify-content: center; gap: 10px; }
+        .browser-prompt button {
+            min-width: 120px;
+            padding: 10px 16px;
+            border: 1px solid rgba(191, 219, 254, .45);
+            border-radius: 9px;
+            background: rgba(96, 72, 196, .72);
+            color: white;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .browser-prompt button.secondary { background: rgba(30, 41, 59, .85); }
+        .loading-card {
+            width: min(460px, calc(100vw - 40px));
+            padding: 28px;
+            border: 1px solid rgba(147, 197, 253, .34);
+            border-radius: 18px;
+            background: rgba(8, 11, 32, .78);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, .42);
+            text-align: center;
+        }
+        .logo {
+            margin: 0 0 8px;
+            font-size: clamp(32px, 8vw, 54px);
+            font-weight: 900;
+            letter-spacing: .03em;
+        }
+        .logo .spin { color: #b68cff; }
+        .logo .tool { color: #6fb7ff; }
+        #status { margin: 12px 0 0; color: #d7e5ff; line-height: 1.45; }
+        .bar {
+            height: 7px;
+            margin-top: 20px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: rgba(255,255,255,.10);
+        }
+        .bar::after {
+            content: "";
+            display: block;
+            width: 45%;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #a855f7, #3b82f6);
+            animation: loading 1.15s ease-in-out infinite alternate;
+        }
+        @keyframes loading { from { transform: translateX(-15%); } to { transform: translateX(135%); } }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="loading-card">
+            <h1 class="logo"><span class="spin">SPIN</span><span class="tool">TOOL</span></h1>
+            <div id="status">Loading WebAssembly and browser storage…</div>
+            <div class="bar"></div>
+        </div>
+    </div>
+    <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+    <div id="file-picker-prompt" class="browser-prompt hidden" role="dialog" aria-modal="true" aria-labelledby="file-picker-title">
+        <div class="browser-prompt-card">
+            <h2 id="file-picker-title">Open a local file</h2>
+            <p id="file-picker-prompt-text">Choose a file to continue.</p>
+            <div class="browser-prompt-actions">
+                <button id="file-picker-choose" type="button">Choose file</button>
+                <button id="file-picker-cancel" class="secondary" type="button">Cancel</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const loading = document.getElementById('loading');
+        const statusNode = document.getElementById('status');
+
+        var Module = {
+            canvas: document.getElementById('canvas'),
+            print: (...args) => console.log(...args),
+            printErr: (...args) => console.error(...args),
+            setStatus: (text) => {
+                if (text) statusNode.textContent = text;
+            },
+            preRun: [() => {
+                Module.setStatus('Opening persistent browser storage…');
+                FS.mkdirTree('/spintool');
+                FS.mount(IDBFS, { autoPersist: true }, '/spintool');
+                addRunDependency('spintool-idbfs');
+                FS.syncfs(true, (error) => {
+                    if (error) console.error('SpinTool: could not restore IndexedDB storage', error);
+                    removeRunDependency('spintool-idbfs');
+                });
+            }],
+            onRuntimeInitialized: () => {
+                Module.setStatus('Starting SpinTool…');
+                requestAnimationFrame(() => loading.classList.add('hidden'));
+            },
+            onAbort: (reason) => {
+                loading.classList.remove('hidden');
+                statusNode.textContent = `SpinTool could not start: ${reason}`;
+            }
+        };
+
+        window.addEventListener('beforeunload', () => {
+            try { FS.syncfs(false, () => {}); } catch (_) {}
+        });
+    </script>
+    {{{ SCRIPT }}}
+</body>
+</html>

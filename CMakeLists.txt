@@ -29,47 +29,6 @@ if(EMSCRIPTEN OR SPINTOOL_BUILD_WEB)
     )
     FetchContent_MakeAvailable(SDL3)
 
-    # Use the real SDL3_image library in WebAssembly builds. SDL3 itself does
-    # not provide PNG loading/saving APIs. Keep the web build small by enabling
-    # only PNG, with vendored static libpng/zlib dependencies.
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_INSTALL OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_SAMPLES OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_TESTS OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_DEPS_SHARED OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_VENDORED ON CACHE BOOL "" FORCE)
-    set(SDLIMAGE_STRICT ON CACHE BOOL "" FORCE)
-    set(SDLIMAGE_BACKEND_STB OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_BACKEND_WIC OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_BACKEND_IMAGEIO OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_ANI OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_AVIF OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_BMP OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_GIF OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_JPG OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_JXL OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_LBM OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_PCX OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_PNG ON CACHE BOOL "" FORCE)
-    set(SDLIMAGE_PNG_LIBPNG ON CACHE BOOL "" FORCE)
-    set(SDLIMAGE_PNG_SAVE ON CACHE BOOL "" FORCE)
-    set(SDLIMAGE_PNM OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_QOI OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_SVG OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_TGA OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_TIF OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_WEBP OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_XCF OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_XPM OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_XV OFF CACHE BOOL "" FORCE)
-
-    FetchContent_Declare(
-        SDL3_image
-        URL https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.4/SDL3_image-3.4.4.tar.gz
-        URL_HASH SHA256=29751304a13d25ac513f24305fa25b06a6edd9607718c90129b8350d35fc5573
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    )
-    FetchContent_MakeAvailable(SDL3_image)
 else()
     # SDL is supplied by the native Linux packages or by vcpkg when
     # cross-compiling from Linux to Windows with MinGW-w64.
@@ -163,13 +122,20 @@ target_include_directories(spintool PRIVATE
     redist/ui
 )
 
-target_link_libraries(spintool PRIVATE SDL3::SDL3 SDL3_image::SDL3_image)
+if(EMSCRIPTEN)
+    target_sources(spintool PRIVATE src/platform/web_png_compat.cpp)
+    target_link_libraries(spintool PRIVATE SDL3::SDL3)
+else()
+    target_link_libraries(spintool PRIVATE SDL3::SDL3 SDL3_image::SDL3_image)
+endif()
 
 if(EMSCRIPTEN)
     target_compile_definitions(spintool PRIVATE SPINTOOL_WEB=1)
-    target_compile_options(spintool PRIVATE -fexceptions)
+    target_compile_options(spintool PRIVATE -fexceptions -sUSE_LIBPNG=1 -sUSE_ZLIB=1)
     target_link_options(spintool PRIVATE
         -fexceptions
+        -sUSE_LIBPNG=1
+        -sUSE_ZLIB=1
         -sALLOW_MEMORY_GROWTH=1
         -sMAXIMUM_MEMORY=1073741824
         -sFORCE_FILESYSTEM=1

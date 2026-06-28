@@ -11,8 +11,9 @@ compiles the same project to WebAssembly with Emscripten and SDL3.
 - Python 3 for the local test server
 
 SDL3 3.4.10 is downloaded by CMake and verified with its SHA-256 checksum.
-SDL3_image is not required by the browser target: SDL3's native PNG support is
-used through a small compatibility layer.
+SDL3_image is not required by the browser target. PNG loading and saving use
+Emscripten's built-in libpng/zlib ports through a small SDL3-compatible layer.
+Indexed PNG files remain indexed so tile colour IDs are preserved.
 
 ## Build
 

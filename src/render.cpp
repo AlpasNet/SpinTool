@@ -21,9 +21,6 @@
 #include "backends/imgui_impl_sdl3.h"
 #include "ui/ui_palette.h"
 
-#if defined(__EMSCRIPTEN__)
-#include <emscripten/html5.h>
-#endif
 
 namespace
 {
@@ -178,14 +175,11 @@ namespace spintool
 			SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY
 		);
 #if defined(__EMSCRIPTEN__)
+		// Let SDL own both the CSS size and the backing-buffer size of the
+		// browser canvas. Mixing CSS viewport sizing with SDL_SetWindowSize()
+		// creates two independent coordinate spaces and offsets ImGui input.
 		SDL_SetHint(SDL_HINT_EMSCRIPTEN_CANVAS_SELECTOR, "#canvas");
-		double css_width = 0.0;
-		double css_height = 0.0;
-		if (emscripten_get_element_css_size("#canvas", &css_width, &css_height) == EMSCRIPTEN_RESULT_SUCCESS)
-		{
-			initial_width = std::max(640, static_cast<int>(css_width));
-			initial_height = std::max(480, static_cast<int>(css_height));
-		}
+		SDL_SetHint("SDL_EMSCRIPTEN_FILL_DOCUMENT", "1");
 #endif
 
 #if defined(__EMSCRIPTEN__)
@@ -383,23 +377,6 @@ namespace spintool
 		{
 			return;
 		}
-
-#if defined(__EMSCRIPTEN__)
-		double css_width = 0.0;
-		double css_height = 0.0;
-		if (emscripten_get_element_css_size("#canvas", &css_width, &css_height) == EMSCRIPTEN_RESULT_SUCCESS)
-		{
-			int current_width = 0;
-			int current_height = 0;
-			SDL_GetWindowSize(s_window, &current_width, &current_height);
-			const int requested_width = std::max(1, static_cast<int>(css_width));
-			const int requested_height = std::max(1, static_cast<int>(css_height));
-			if (current_width != requested_width || current_height != requested_height)
-			{
-				SDL_SetWindowSize(s_window, requested_width, requested_height);
-			}
-		}
-#endif
 
 		ApplyPendingFontRequest();
 		ImGui_ImplSDLRenderer3_NewFrame();

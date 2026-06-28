@@ -19,6 +19,12 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
 
+      - name: Install build tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip
+
       - name: Install Emscripten SDK
         shell: bash
         run: |
@@ -26,11 +32,43 @@ jobs:
           "$RUNNER_TEMP/emsdk/emsdk" install latest
           "$RUNNER_TEMP/emsdk/emsdk" activate latest
 
-      - name: Build SpinTool Web
+      - name: Build and package SpinTool Web
         shell: bash
         run: |
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           ./web/build-web.sh
+
+      - name: Verify downloadable Web package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist-web/index.html
+          test -s dist-web/index.js
+          test -s dist-web/index.wasm
+          test -s dist-web/SHA256SUMS.txt
+          test -s SpinTool-Web.zip
+          echo "Files included in SpinTool-Web:"
+          find dist-web -maxdepth 1 -type f -printf '%f : %s bytes\n' | sort
+          echo "ZIP package:"
+          ls -lh SpinTool-Web.zip
+
+      - name: Upload SpinTool Web files
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpinTool-Web
+          path: dist-web/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload ready-to-download ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpinTool-Web-ZIP
+          path: SpinTool-Web.zip
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
 
       - name: Upload WebAssembly build log
         if: always()
@@ -40,22 +78,3 @@ jobs:
           path: build-web.log
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Verify web package
-        shell: bash
-        run: |
-          test -s build-web/index.html
-          test -s build-web/index.js
-          test -s build-web/index.wasm
-          find build-web -maxdepth 1 -type f -printf '%f : %s bytes\n' | sort
-
-      - name: Upload web artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: SpinTool-Web
-          path: |
-            build-web/index.html
-            build-web/index.js
-            build-web/index.wasm
-          if-no-files-found: warn
-          retention-days: 30

@@ -40,7 +40,7 @@ WebAssembly must be served through HTTP; opening `index.html` directly is not
 supported.
 
 ```bash
-python3 web/serve.py build-web
+python3 web/serve.py dist-web
 ```
 
 Then open `http://127.0.0.1:8080`.

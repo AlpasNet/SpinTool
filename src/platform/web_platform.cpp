@@ -95,167 +95,15 @@ namespace spintool::web
         const char* accept_utf8,
         const char* target_directory_utf8
     ), {
-        const accept = UTF8ToString(accept_utf8);
-        const targetDirectory = UTF8ToString(target_directory_utf8);
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = accept;
-        input.style.display = 'none';
-
-        let completed = false;
-        let selectionStarted = false;
-        const cancel = () => {
-            const pickerPrompt = document.getElementById('file-picker-prompt');
-            if (pickerPrompt) pickerPrompt.classList.add('hidden');
-            if (!completed) {
-                completed = true;
-                _spintool_web_file_cancelled(request_id);
-            }
-            input.remove();
-        };
-
-        input.addEventListener('cancel', cancel, { once: true });
-        input.addEventListener('change', async () => {
-            selectionStarted = true;
-            const file = input.files && input.files.length > 0 ? input.files[0] : null;
-            if (!file) {
-                cancel();
-                return;
-            }
-
-            try {
-                let importedFile = file;
-                let safeName = file.name.replace(/[\\/\0]/g, '_');
-
-                // SDL3's lightweight web build uses its native PNG loader.
-                // Convert other browser-supported image formats to PNG before
-                // exposing them to the unchanged C++ import code.
-                const lowerName = safeName.toLowerCase();
-                const hasImageExtension = /\.(png|gif|bmp|jpe?g|webp)$/i.test(safeName);
-                const isBrowserImage = file.type.startsWith('image/') || hasImageExtension;
-                if (isBrowserImage && !lowerName.endsWith('.png')) {
-                    const bitmap = await createImageBitmap(file);
-                    let pngBlob;
-                    if (typeof OffscreenCanvas !== 'undefined') {
-                        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-                        const context = canvas.getContext('2d', { alpha: true });
-                        context.drawImage(bitmap, 0, 0);
-                        pngBlob = await canvas.convertToBlob({ type: 'image/png' });
-                    } else {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = bitmap.width;
-                        canvas.height = bitmap.height;
-                        canvas.getContext('2d', { alpha: true }).drawImage(bitmap, 0, 0);
-                        pngBlob = await new Promise((resolve, reject) => {
-                            canvas.toBlob(
-                                (blob) => blob ? resolve(blob) : reject(new Error('PNG conversion failed')),
-                                'image/png'
-                            );
-                        });
-                    }
-                    bitmap.close();
-                    importedFile = pngBlob;
-                    safeName = safeName.replace(/\.[^.]*$/, '') + '.png';
-                }
-
-                const bytes = new Uint8Array(await importedFile.arrayBuffer());
-                FS.mkdirTree(targetDirectory);
-                const virtualPath = `${targetDirectory}/${safeName}`;
-                FS.writeFile(virtualPath, bytes);
-
-                completed = true;
-                const pathLength = lengthBytesUTF8(virtualPath) + 1;
-                const pathPointer = _malloc(pathLength);
-                stringToUTF8(virtualPath, pathPointer, pathLength);
-                _spintool_web_file_selected(request_id, pathPointer);
-                _free(pathPointer);
-
-                if (typeof FS.syncfs === 'function') {
-                    FS.syncfs(false, (error) => {
-                        if (error) {
-                            console.error('SpinTool: IndexedDB sync failed after import', error);
-                        }
-                    });
-                }
-            } catch (error) {
-                console.error('SpinTool: could not import selected file', error);
-                cancel();
-            } finally {
-                input.remove();
-            }
-        }, { once: true });
-
-        const prompt = document.getElementById('file-picker-prompt');
-        const promptText = document.getElementById('file-picker-prompt-text');
-        const chooseButton = document.getElementById('file-picker-choose');
-        const cancelButton = document.getElementById('file-picker-cancel');
-
-        const hidePrompt = () => {
-            if (prompt) prompt.classList.add('hidden');
-        };
-
-        const showPrompt = () => {
-            if (!prompt || !chooseButton || !cancelButton) {
-                return false;
-            }
-            if (promptText) {
-                promptText.textContent = accept
-                    ? `Choose a file (${accept}) to continue.`
-                    : 'Choose a file to continue.';
-            }
-            prompt.classList.remove('hidden');
-            chooseButton.onclick = () => {
-                hidePrompt();
-                launchPicker();
-            };
-            cancelButton.onclick = () => {
-                hidePrompt();
-                cancel();
-            };
-            return true;
-        };
-
-        // Some browsers do not emit the input `cancel` event. When the
-        // picker returns focus without starting a selection, complete the C++
-        // request as cancelled so a later click can open a new picker.
-        const onWindowFocus = () => {
-            window.setTimeout(() => {
-                if (!completed && !selectionStarted) {
-                    cancel();
-                }
-            }, 350);
-        };
-
-        const launchPicker = () => {
-            if (!input.isConnected) document.body.appendChild(input);
-            window.addEventListener('focus', onWindowFocus, { once: true });
-            input.click();
-
-            // If a browser rejects the programmatic click because the SDL
-            // frame no longer owns transient user activation, offer one real
-            // HTML button click as a portable fallback.
-            window.setTimeout(() => {
-                if (!completed && !selectionStarted && document.hasFocus()) {
-                    showPrompt();
-                }
-            }, 700);
-        };
-
-        if (navigator.userActivation && !navigator.userActivation.isActive) {
-            if (!showPrompt()) launchPicker();
-        } else {
-            launchPicker();
-        }
+        window.SpinToolWeb.openFilePicker(
+            request_id,
+            UTF8ToString(accept_utf8),
+            UTF8ToString(target_directory_utf8)
+        );
     });
 
     EM_JS(void, SyncBrowserFilesystem, (), {
-        if (typeof FS !== 'undefined' && typeof FS.syncfs === 'function') {
-            FS.syncfs(false, (error) => {
-                if (error) {
-                    console.error('SpinTool: IndexedDB sync failed', error);
-                }
-            });
-        }
+        window.SpinToolWeb.syncFilesystem();
     });
 
     EM_JS(int, DownloadBrowserFile, (
@@ -263,27 +111,11 @@ namespace spintool::web
         const char* mime_type_utf8,
         const char* download_name_utf8
     ), {
-        try {
-            const path = UTF8ToString(path_utf8);
-            const mimeType = UTF8ToString(mime_type_utf8);
-            const requestedName = UTF8ToString(download_name_utf8);
-            const bytes = FS.readFile(path, { encoding: 'binary' });
-            const blob = new Blob([bytes], { type: mimeType || 'application/octet-stream' });
-            const anchor = document.createElement('a');
-            anchor.href = URL.createObjectURL(blob);
-            anchor.download = requestedName || path.split('/').pop() || 'spintool-export.bin';
-            anchor.style.display = 'none';
-            document.body.appendChild(anchor);
-            anchor.click();
-            window.setTimeout(() => {
-                URL.revokeObjectURL(anchor.href);
-                anchor.remove();
-            }, 1000);
-            return 1;
-        } catch (error) {
-            console.error('SpinTool: download failed', error);
-            return 0;
-        }
+        return window.SpinToolWeb.downloadFile(
+            UTF8ToString(path_utf8),
+            UTF8ToString(mime_type_utf8),
+            UTF8ToString(download_name_utf8)
+        ) ? 1 : 0;
     });
 #endif
 

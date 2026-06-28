@@ -139,6 +139,7 @@ if(EMSCRIPTEN)
         -sALLOW_MEMORY_GROWTH=1
         -sMAXIMUM_MEMORY=1073741824
         -sFORCE_FILESYSTEM=1
+        -sEXPORTED_RUNTIME_METHODS=FS,IDBFS,ccall,addRunDependency,removeRunDependency
         -lidbfs.js
         -sEXIT_RUNTIME=0
         -sENVIRONMENT=web

@@ -1,5 +1,7 @@
 #include "ui/ui_image_io.h"
 
+#include "platform/web_platform.h"
+
 #include "SDL3/SDL_error.h"
 #include "SDL3/SDL_iostream.h"
 #include "SDL3/SDL_image.h"
@@ -10,6 +12,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <system_error>
 #include <vector>
 
 namespace spintool
@@ -117,4 +120,65 @@ namespace spintool
 		}
 		return surface;
 	}
+	bool SavePngToPath(
+		SDL_Surface* surface,
+		const std::filesystem::path& path,
+		std::string* error_message
+	)
+	{
+		auto set_error = [error_message](const std::string& message)
+		{
+			if (error_message != nullptr)
+			{
+				*error_message = message;
+			}
+		};
+
+		if (surface == nullptr)
+		{
+			set_error("Could not save PNG: the image surface is null.");
+			return false;
+		}
+
+		std::error_code directory_error;
+		const std::filesystem::path parent = path.parent_path();
+		if (!parent.empty())
+		{
+			std::filesystem::create_directories(parent, directory_error);
+			if (directory_error)
+			{
+				set_error(
+					"Could not create the PNG export directory: " +
+					directory_error.message()
+				);
+				return false;
+			}
+		}
+
+		const std::string utf8_path = PathToUtf8(path);
+		SDL_ClearError();
+		if (!IMG_SavePNG(surface, utf8_path.c_str()))
+		{
+			set_error(
+				std::string("SDL_image could not save the PNG: ") +
+				SDL_GetError()
+			);
+			return false;
+		}
+
+#if defined(__EMSCRIPTEN__)
+		if (!web::DownloadFile(path, "image/png", path.filename().string()))
+		{
+			set_error("The PNG was saved, but the browser download could not be started.");
+			return false;
+		}
+#endif
+
+		if (error_message != nullptr)
+		{
+			error_message->clear();
+		}
+		return true;
+	}
+
 }

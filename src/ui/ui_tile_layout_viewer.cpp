@@ -2,8 +2,7 @@
 #include "platform/web_platform.h"
 
 #include "ui/ui_editor.h"
-
-#include "SDL3/SDL_image.h"
+#include "ui/ui_image_io.h"
 
 #include <algorithm>
 #include <cassert>
@@ -20,18 +19,6 @@ namespace spintool
 {
 	namespace
 	{
-		std::string PathToUtf8(const std::filesystem::path& path)
-		{
-#if defined(__cpp_lib_char8_t)
-			const std::u8string utf8_path = path.generic_u8string();
-			return std::string(
-				reinterpret_cast<const char*>(utf8_path.data()),
-				utf8_path.size()
-			);
-#else
-			return path.generic_u8string();
-#endif
-		}
 
 		bool ROMRangeIsValid(const rom::SpinballROM& rom, const Uint32 offset, const std::size_t length)
 		{
@@ -830,8 +817,7 @@ namespace spintool
 				static char path_buffer[4096];
 				sprintf(path_buffer, "spinball_%s_%s.png", request.layout_type_name.c_str(), request.layout_layout_name.c_str());
 				std::filesystem::path export_path = m_owning_ui.GetSpriteExportPath().append(path_buffer);
-				const std::string export_path_utf8 = PathToUtf8(export_path);
-				assert(IMG_SavePNG(layout_preview_bg_surface.get(), export_path_utf8.c_str()));
+				assert(SavePngToPath(layout_preview_bg_surface.get(), export_path));
 			}
 
 			m_tile_layout_render_requests.erase(std::begin(m_tile_layout_render_requests));
@@ -994,16 +980,15 @@ namespace spintool
 
 			sprintf(path_buffer, "spinball_%s.png", combined_type_name.c_str());
 			std::filesystem::path export_path = m_owning_ui.GetSpriteExportPath().append(path_buffer);
-			const std::string export_path_utf8 = PathToUtf8(export_path);
 			if (export_combined)
 			{
 				SDLSurfaceHandle combined{ SDL_DuplicateSurface(layout_preview_bg_surface.get()) };
 				SDL_BlitSurface(layout_preview_fg_surface.get(), nullptr, combined.get(), nullptr);
-				assert(IMG_SavePNG(combined.get(), export_path_utf8.c_str()));
+				assert(SavePngToPath(combined.get(), export_path));
 			}
 			else
 			{
-				assert(IMG_SavePNG(layout_preview_bg_surface.get(), export_path_utf8.c_str()));
+				assert(SavePngToPath(layout_preview_bg_surface.get(), export_path));
 			}
 		}
 

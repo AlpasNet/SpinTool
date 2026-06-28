@@ -5,6 +5,7 @@
 #include "rom/tails_plane_decoder.h"
 #include "ui/ui_editor.h"
 #include "ui/ui_file_selector.h"
+#include "ui/ui_image_io.h"
 
 #include "imgui.h"
 #include "SDL3/SDL_image.h"
@@ -852,10 +853,12 @@ namespace spintool
 		SDL_SetSurfacePalette(output_surface.get(), palette.get());
 		SDL_SetSurfaceColorKey(output_surface.get(), true, 0);
 		image.texture->sprite->RenderToSurface(output_surface.get());
-		const std::string export_path_utf8 = PathToUtf8(export_path);
-		if (!IMG_SavePNG(output_surface.get(), export_path_utf8.c_str()))
+		std::string export_error;
+		if (!SavePngToPath(output_surface.get(), export_path, &export_error))
 		{
-			m_tails_plane_status = "Could not export PNG: " + export_path_utf8;
+			m_tails_plane_status = export_error.empty()
+				? "Could not export PNG: " + PathToUtf8(export_path)
+				: export_error;
 			return;
 		}
 	}
@@ -1891,8 +1894,7 @@ namespace spintool
 								SDL_SetSurfacePalette(out_surface.get(), palette.get());
 								SDL_SetSurfaceColorKey(out_surface.get(), true, 0);
 								tex->sprite->RenderToSurface(out_surface.get());
-								const std::string export_path_utf8 = PathToUtf8(export_path);
-								IMG_SavePNG(out_surface.get(), export_path_utf8.c_str());
+								(void)SavePngToPath(out_surface.get(), export_path);
 							}
 						}
 						ImGui::EndPopup();
@@ -2128,8 +2130,7 @@ namespace spintool
 							SDL_SetSurfacePalette(out_surface.get(), palette.get());
 							SDL_SetSurfaceColorKey(out_surface.get(), true, 0);
 							tex->sprite->RenderToSurface(out_surface.get());
-							const std::string export_path_utf8 = PathToUtf8(export_path);
-							assert(IMG_SavePNG(out_surface.get(), export_path_utf8.c_str()));
+							assert(SavePngToPath(out_surface.get(), export_path));
 						}
 						ImGui::EndPopup();
 					}

@@ -13,4 +13,12 @@ namespace spintool
 		const std::filesystem::path& path,
 		std::string* error_message = nullptr
 	);
+
+	// Saves a PNG and, in WebAssembly builds, immediately downloads the file
+	// through the browser after it has been written to the virtual filesystem.
+	[[nodiscard]] bool SavePngToPath(
+		SDL_Surface* surface,
+		const std::filesystem::path& path,
+		std::string* error_message = nullptr
+	);
 }

@@ -9,7 +9,7 @@
 #include "imgui.h"
 #include "ui/ui_palette_viewer.h"
 #include "ui/ui_editor.h"
-#include "SDL3/SDL_image.h"
+#include "ui/ui_image_io.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -18,23 +18,6 @@
 
 namespace spintool
 {
-
-	namespace
-	{
-		std::string PathToUtf8(const std::filesystem::path& path)
-		{
-#if defined(__cpp_lib_char8_t)
-			const std::u8string utf8_path = path.generic_u8string();
-
-			return std::string(
-				reinterpret_cast<const char*>(utf8_path.data()),
-				utf8_path.size()
-			);
-#else
-			return path.generic_u8string();
-#endif
-		}
-	}
 
 
 	TilePicker::TilePicker(EditorUI& owning_ui)
@@ -296,8 +279,7 @@ namespace spintool
 							);
 							const std::filesystem::path export_path =
 								m_owning_ui.GetSpriteExportPath() / path_buffer;
-							const std::string export_path_utf8 = PathToUtf8(export_path);
-							IMG_SavePNG(out_surface.get(), export_path_utf8.c_str());
+							(void)SavePngToPath(out_surface.get(), export_path);
 						}
 					}
 
@@ -323,8 +305,7 @@ namespace spintool
 							);
 							if (out_surface)
 							{
-								const std::string export_path_utf8 = PathToUtf8(export_path);
-								IMG_SavePNG(out_surface.get(), export_path_utf8.c_str());
+								(void)SavePngToPath(out_surface.get(), export_path);
 							}
 						}
 					}
